@@ -3,23 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>◈ ZTS SYSTEM :: Mahoraga</title>
+<title>◈ ZTS SYSTEM :: Checker</title>
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
-/* ===== TODO O CSS AQUI ===== */
+/* ===== CORES ESCURAS ===== */
 :root {
     --bg: #0a0a0a;
-    --panel: #111111;
-    --border: #222222;
-    --text: #e0e0e0;
-    --text-dim: #666666;
+    --bg-light: #0d0d0d;
+    --panel: #141414;
+    --panel-light: #1a1a1a;
+    --panel-card: #111111;
+    
+    --border: #2a2a2a;
+    --border-light: #333333;
+    --border-gold: rgba(201,168,76,0.15);
+    
+    --text: #e8e8e8;
+    --text-light: #f5f5f5;
+    --text-dim: #777777;
+    --text-muted: #444444;
+    
     --gold: #c9a84c;
+    --gold-light: #e8d5a3;
+    --gold-dark: #a88930;
+    --gold-dim: rgba(201,168,76,0.08);
+    --gold-glow: rgba(201,168,76,0.15);
+    
+    --success: #2d8f5c;
+    --success-light: #3aad70;
+    --success-dim: rgba(45,143,92,0.12);
     --danger: #cc3333;
-    --success: #44aa77;
-    --purple: #8866bb;
+    --danger-light: #dd4444;
+    --danger-dim: rgba(204,51,51,0.08);
+    --purple: #7a5caa;
+    --purple-dim: rgba(122,92,170,0.12);
+    
+    --shadow: rgba(0,0,0,0.7);
+    --shadow-light: rgba(0,0,0,0.4);
 }
+
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body {
     height:100%;
@@ -27,121 +51,1392 @@ html, body {
     font-family: 'Share Tech Mono', monospace;
     color: var(--text);
 }
-/* ... (coloque todo o CSS da versão anterior aqui) ... */
+body {
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    overflow-x:hidden;
+}
+
+/* ===== FUNDO MAHORAGA ===== */
+.wheel-bg {
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    opacity:0.03;
+    background: 
+        radial-gradient(circle at 50% 50%, transparent 40%, rgba(201,168,76,0.03) 60%, transparent 65%),
+        repeating-conic-gradient(from 0deg, transparent 0deg, rgba(201,168,76,0.02) 2deg, transparent 4deg, transparent 30deg),
+        repeating-conic-gradient(from 15deg, transparent 0deg, rgba(201,168,76,0.015) 2deg, transparent 4deg, transparent 30deg);
+    animation: wheelSpin 120s linear infinite;
+}
+.wheel-bg::before {
+    content:"◈";
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    font-size:300px;
+    color:rgba(201,168,76,0.03);
+    font-family:'Share Tech Mono',monospace;
+}
+@keyframes wheelSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.wheel-ring {
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    border:1px solid rgba(201,168,76,0.03);
+    border-radius:50%;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:80vh;
+    height:80vh;
+    animation: ringPulse 8s ease-in-out infinite;
+}
+@keyframes ringPulse {
+    0%,100% { transform:translate(-50%,-50%) scale(1); opacity:0.3; }
+    50% { transform:translate(-50%,-50%) scale(1.05); opacity:0.6; }
+}
+
+/* ===== TELEMETRY ===== */
+.telemetry {
+    position:relative;
+    z-index:2;
+    width:100%;
+    display:flex;
+    justify-content:center;
+    gap:20px;
+    padding:6px 16px;
+    font-size:9px;
+    letter-spacing:1px;
+    color: var(--text-dim);
+    border-bottom:1px solid var(--border);
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(8px);
+    flex-wrap:wrap;
+}
+.telemetry b { color: var(--gold); }
+.telemetry .blink { animation: blink 1.4s infinite; }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+
+/* ===== STAGE ===== */
+.stage {
+    flex:1;
+    position:relative;
+    z-index:2;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px 16px;
+}
+
+/* ===== HUD ===== */
+.hud {
+    position:relative;
+    width:100%;
+    max-width:540px;
+    max-height:95vh;
+    overflow-y:auto;
+    background: var(--panel);
+    border:1px solid var(--border);
+    padding:28px 28px 24px;
+    box-shadow: 0 4px 40px var(--shadow), 0 2px 8px var(--shadow);
+    animation: hudIn .4s ease;
+    scrollbar-width: thin;
+    border-radius:8px;
+}
+.hud::-webkit-scrollbar { width:3px; }
+.hud::-webkit-scrollbar-track { background:var(--panel-light); border-radius:10px; }
+.hud::-webkit-scrollbar-thumb { background:var(--gold); border-radius:10px; }
+@keyframes hudIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+
+/* ===== CORNERS ===== */
+.corner {
+    position:absolute;
+    width:16px; height:16px;
+    border:1px solid var(--gold);
+    opacity:0.5;
+    animation: cornerPulse 2.4s ease-in-out infinite;
+}
+.corner.tl { top:-1px; left:-1px; border-right:none; border-bottom:none; border-radius:4px 0 0 0; }
+.corner.tr { top:-1px; right:-1px; border-left:none; border-bottom:none; border-radius:0 4px 0 0; animation-delay:.3s; }
+.corner.bl { bottom:-1px; left:-1px; border-right:none; border-top:none; border-radius:0 0 0 4px; animation-delay:.6s; }
+.corner.br { bottom:-1px; right:-1px; border-left:none; border-top:none; border-radius:0 0 4px 0; animation-delay:.9s; }
+@keyframes cornerPulse { 0%,100% { opacity:0.3; } 50% { opacity:0.9; box-shadow:0 0 12px var(--gold); } }
+
+/* ===== HEADER ===== */
+.hud-head { text-align:center; margin-bottom:6px; }
+.hud-head .status-line {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:8px; letter-spacing:2px;
+    color: var(--success);
+    margin-bottom:10px;
+}
+.hud-head .status-line .dot {
+    width:4px; height:4px; border-radius:50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+    animation: blink 1.6s infinite;
+}
+.hud-head h1 {
+    font-family:'Orbitron', sans-serif;
+    font-weight:900;
+    font-size:20px;
+    letter-spacing:4px;
+    color: var(--text-light);
+    display:inline-block;
+}
+.hud-head h1 .crown { color: var(--gold); font-size:16px; }
+.hud-head .sub {
+    display:block;
+    font-size:9px;
+    letter-spacing:4px;
+    color: var(--gold);
+    margin-top:4px;
+    opacity:0.7;
+}
+.hud-footer {
+    text-align:center;
+    margin-top:14px;
+    font-size:8px;
+    color: var(--text-dim);
+    letter-spacing:1px;
+}
+.hud-footer a { color: var(--gold); text-decoration:none; }
+.hud-footer a:hover { text-decoration:underline; }
+
+/* ===== DIVIDER ===== */
+.divider-hud {
+    height:1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin:14px 0 16px;
+}
+
+/* ===== FORMULÁRIOS ===== */
+.field { margin-bottom:14px; }
+.field label {
+    display:block;
+    font-size:9px;
+    letter-spacing:1.5px;
+    color: var(--gold);
+    margin-bottom:5px;
+    font-weight:600;
+}
+.field label::before { content:"◈ "; opacity:0.5; }
+.input-wrap { position:relative; }
+.input-wrap::before {
+    content:"⪢";
+    position:absolute;
+    left:10px; top:50%;
+    transform:translateY(-50%);
+    color: var(--gold);
+    opacity:0.4;
+    font-size:11px;
+}
+.field input, .field select {
+    width:100%;
+    padding:10px 12px 10px 26px;
+    background: #0d0d0d;
+    border:1px solid var(--border);
+    color: var(--text);
+    font-family:'Share Tech Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.5px;
+    outline:none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+    border-radius:4px;
+}
+.field input::placeholder { color: var(--text-dim); }
+.field input:focus, .field select:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px var(--gold-dim);
+}
+.field select option { background:#0d0d0d; color:var(--text); }
+
+/* ===== BOTÕES ===== */
+.btn-hud {
+    width:100%;
+    padding:11px;
+    margin-top:4px;
+    border:2px solid var(--gold);
+    background: var(--gold);
+    color: #0a0a0a;
+    font-family:'Orbitron', sans-serif;
+    font-weight:700;
+    font-size:11px;
+    letter-spacing:2px;
+    cursor:pointer;
+    transition: all .3s ease;
+    border-radius:4px;
+    position:relative;
+    overflow:hidden;
+}
+.btn-hud:hover {
+    background: var(--gold-dark);
+    border-color: var(--gold-dark);
+    transform:translateY(-1px);
+    box-shadow: 0 4px 20px rgba(201,168,76,0.25);
+}
+.btn-hud::after { content: " ◈"; }
+.btn-hud:disabled { opacity:0.5; cursor:wait; }
+
+.btn-hud.secondary {
+    background: transparent;
+    color: var(--gold);
+    border:2px solid var(--gold);
+}
+.btn-hud.secondary:hover {
+    background: var(--gold);
+    color: #0a0a0a;
+}
+
+.btn-hud.success {
+    border-color: var(--success);
+    background: var(--success);
+    color: #fff;
+}
+.btn-hud.success:hover {
+    background: #1d7a4a;
+    border-color: #1d7a4a;
+}
+.btn-hud.success::after { content: " ✓"; }
+
+.btn-hud.danger {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: #fff;
+}
+.btn-hud.danger:hover {
+    background: #aa2222;
+    border-color: #aa2222;
+}
+.btn-hud.danger::after { content: " ✕"; }
+
+.btn-hud.purple {
+    border-color: var(--purple);
+    background: var(--purple);
+    color: #fff;
+}
+.btn-hud.purple:hover {
+    background: #5d3d8a;
+    border-color: #5d3d8a;
+}
+.btn-hud.purple::after { content: " ⚡"; }
+
+.btn-hud.small { 
+    padding:8px; 
+    font-size:9px; 
+    width:auto; 
+    display:inline-block;
+    border-radius:4px;
+}
+.btn-hud.small::after { content:""; }
+
+/* ===== TOGGLE EYE ===== */
+.input-wrap .toggle-eye {
+    position:absolute;
+    right:10px; top:50%;
+    transform:translateY(-50%);
+    cursor:pointer;
+    color:var(--text-dim);
+    font-size:13px;
+    background:none;
+    border:none;
+    transition: color .2s ease;
+}
+.input-wrap .toggle-eye:hover { color: var(--gold); }
+.input-wrap.has-eye input { padding-right:34px; }
+
+/* ===== SWITCH LINK ===== */
+.switch-link {
+    text-align:center;
+    margin-top:18px;
+    font-size:10px;
+    color:var(--text-dim);
+}
+.switch-link a { color: var(--gold); text-decoration:none; font-weight:bold; }
+.switch-link a:hover { text-decoration:underline; }
+
+/* ===== MENU ===== */
+.menu-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:6px;
+    margin:12px 0;
+}
+.menu-grid .btn-menu {
+    padding:10px 6px;
+    border:1px solid var(--border);
+    background: var(--panel-light);
+    color: var(--text-dim);
+    font-family:'Orbitron', sans-serif;
+    font-weight:600;
+    font-size:8px;
+    letter-spacing:1px;
+    cursor:pointer;
+    transition: all .3s ease;
+    text-align:center;
+    border-radius:4px;
+}
+.menu-grid .btn-menu:hover {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #0a0a0a;
+    transform:translateY(-1px);
+}
+.menu-grid .btn-menu .icon { display:block; font-size:16px; margin-bottom:4px; }
+.menu-grid .btn-menu.gold { border-color: rgba(201,168,76,0.2); color: var(--gold); }
+.menu-grid .btn-menu.gold:hover { background: var(--gold); color: #0a0a0a; }
+.menu-grid .btn-menu.danger { border-color: rgba(204,51,51,0.2); color: var(--danger); }
+.menu-grid .btn-menu.danger:hover { background: var(--danger); color: #fff; }
+.menu-grid .btn-menu.success { border-color: rgba(45,143,92,0.2); color: var(--success); }
+.menu-grid .btn-menu.success:hover { background: var(--success); color: #fff; }
+.menu-grid .btn-menu.purple { border-color: rgba(122,92,170,0.2); color: var(--purple); }
+.menu-grid .btn-menu.purple:hover { background: var(--purple); color: #fff; }
+
+/* ===== PERFIL ===== */
+.perfil-info {
+    font-size:11px;
+    color: var(--text);
+    line-height:1.8;
+    margin:8px 0 12px;
+    padding:12px 16px;
+    background: var(--panel-light);
+    border-radius:4px;
+    border:1px solid var(--border);
+}
+.perfil-info b { color: var(--gold); }
+.perfil-info .creditos {
+    color: var(--success);
+    font-size:16px;
+    font-family:'Orbitron', sans-serif;
+}
+.perfil-info .creditos-afiliado {
+    color: var(--gold);
+    font-size:16px;
+    font-family:'Orbitron', sans-serif;
+}
+
+/* ===== BADGE ===== */
+.badge {
+    display:inline-block;
+    padding:1px 10px;
+    border-radius:10px;
+    font-size:8px;
+    font-weight:bold;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    margin-left:6px;
+    vertical-align:middle;
+}
+.badge.admin { background:var(--gold-dim); color:var(--gold); }
+.badge.afiliado { background:rgba(201,168,76,0.08); color:var(--gold); }
+.badge.user { background:var(--panel-light); color:var(--text-dim); }
+.badge.master { background:var(--danger-dim); color:var(--danger); }
+
+/* ===== SECTION ===== */
+.section { display:none; }
+.section.active { display:block; animation: fadeIn .3s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+/* ===== GENERATOR / CHECKER ===== */
+.generator-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin:6px 0;
+}
+.gen-field label {
+    font-size:8px;
+    letter-spacing:1px;
+    color: var(--text-dim);
+    display:block;
+    margin-bottom:3px;
+    font-weight:600;
+}
+.gen-field input, .gen-field select, .gen-field textarea {
+    width:100%;
+    padding:6px 8px;
+    background:#0d0d0d;
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:'Share Tech Mono',monospace;
+    font-size:10px;
+    border-radius:4px;
+    outline:none;
+}
+.gen-field input:focus, .gen-field select:focus, .gen-field textarea:focus {
+    border-color:var(--gold);
+    box-shadow:0 0 0 3px var(--gold-dim);
+}
+.gen-field textarea {
+    min-height:60px;
+    resize:vertical;
+    font-size:9px;
+}
+
+/* ===== BIN INFO ===== */
+.bin-info-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:4px 12px;
+    margin:8px 0;
+    font-size:10px;
+    background:var(--panel-light);
+    padding:10px 12px;
+    border:1px solid var(--border);
+    border-radius:4px;
+}
+.bin-info-grid .bin-label { color:var(--text-dim); }
+.bin-info-grid .bin-value { color:var(--gold); font-weight:bold; }
+
+/* ===== CARDS ===== */
+.cards-container {
+    max-height:200px;
+    overflow-y:auto;
+    margin:8px 0;
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:4px;
+    background:#0d0d0d;
+}
+.cards-container::-webkit-scrollbar { width:3px; }
+.cards-container::-webkit-scrollbar-track { background:var(--panel-light); border-radius:10px; }
+.cards-container::-webkit-scrollbar-thumb { background:var(--gold); border-radius:10px; }
+
+.card-item {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:6px 10px;
+    border-bottom:1px solid var(--border);
+    font-size:10px;
+    font-family:'Courier New',monospace;
+    color:var(--text);
+    background:var(--panel-light);
+}
+.card-item:hover { background:var(--gold-dim); }
+.card-item .card-number { color:var(--gold); letter-spacing:1px; font-weight:bold; }
+.card-item .card-details { color:var(--text-dim); font-size:9px; }
+.card-item .status-badge {
+    font-size:8px;
+    padding:2px 8px;
+    border-radius:10px;
+    font-weight:bold;
+}
+.card-item .status-badge.live { background:var(--success-dim); color:var(--success); }
+.card-item .status-badge.dead { background:var(--danger-dim); color:var(--danger); }
+.card-item .status-badge.waiting { background:var(--gold-dim); color:var(--gold); }
+.card-item .card-actions { display:flex; gap:4px; }
+.card-item .card-actions button {
+    background:none;
+    border:none;
+    color:var(--text-dim);
+    cursor:pointer;
+    font-size:11px;
+    padding:2px 6px;
+    transition:color .2s;
+    border-radius:4px;
+}
+.card-item .card-actions button:hover { color:var(--gold); background:var(--gold-dim); }
+
+/* ===== PROGRESS ===== */
+.progress-container {
+    margin:8px 0;
+    background:var(--panel-light);
+    border-radius:4px;
+    overflow:hidden;
+    height:20px;
+    border:1px solid var(--border);
+}
+.progress-bar {
+    height:100%;
+    background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+    transition:width .3s ease;
+    border-radius:4px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:8px;
+    color:#0a0a0a;
+    font-weight:bold;
+}
+
+/* ===== COUNTER BAR ===== */
+.counter-bar {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:6px 0;
+    font-size:10px;
+    color:var(--text-dim);
+    border-top:1px solid var(--border);
+    margin-top:6px;
+    flex-wrap:wrap;
+    gap:6px;
+}
+.counter-bar .count { color:var(--gold); font-weight:bold; }
+
+/* ===== CHECKER ===== */
+.checker-stats {
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:6px;
+    margin:8px 0;
+}
+.checker-stats .stat-card {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    padding:8px 4px;
+    text-align:center;
+    border-radius:4px;
+}
+.checker-stats .stat-card .num {
+    font-size:16px;
+    font-family:'Orbitron',sans-serif;
+    color:var(--gold);
+}
+.checker-stats .stat-card .num.green { color:var(--success); }
+.checker-stats .stat-card .num.red { color:var(--danger); }
+.checker-stats .stat-card .num.gold { color:var(--gold); }
+.checker-stats .stat-card .label {
+    font-size:7px;
+    letter-spacing:1px;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    margin-top:2px;
+}
+
+/* ===== PIX ===== */
+.pix-table {
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:4px;
+    margin:8px 0;
+}
+.pix-table .pix-item {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    padding:8px 4px;
+    text-align:center;
+    border-radius:4px;
+    cursor:pointer;
+    transition:all .3s ease;
+}
+.pix-table .pix-item:hover {
+    border-color:var(--gold);
+    background:var(--gold-dim);
+}
+.pix-table .pix-item .valor { font-size:13px; color:var(--gold); font-family:'Orbitron',sans-serif; }
+.pix-table .pix-item .cred { font-size:9px; color:var(--success); }
+.pix-table .pix-item .bonus { font-size:7px; color:var(--gold); }
+.pix-item.selected {
+    border-color:var(--gold);
+    background:var(--gold-dim);
+    box-shadow:0 0 20px rgba(201,168,76,0.05);
+}
+.pix-code-box {
+    background:rgba(0,0,0,0.3);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:8px;
+    margin:8px 0;
+    word-break:break-all;
+    font-size:9px;
+    color:var(--gold);
+    font-family:'Courier New',monospace;
+    max-height:60px;
+    overflow-y:auto;
+}
+.qr-container { text-align:center; margin:8px 0; }
+.qr-container img {
+    background:white;
+    padding:4px;
+    border-radius:4px;
+    max-width:130px;
+    border:1px solid var(--gold);
+}
+
+/* ===== CHAT ===== */
+.chat-messages {
+    background:#0d0d0d;
+    border:1px solid var(--border);
+    border-radius:4px;
+    height:200px;
+    overflow-y:auto;
+    padding:6px;
+    font-size:10px;
+    line-height:1.6;
+    margin-bottom:6px;
+}
+.chat-messages .msg-chat { padding:2px 0; border-bottom:1px solid var(--border); }
+.chat-messages .msg-chat .user { color:var(--gold); font-weight:bold; }
+.chat-messages .msg-chat .time { color:var(--text-dim); font-size:7px; margin-left:4px; }
+
+.chat-input-row {
+    display:flex;
+    gap:4px;
+    flex-wrap:wrap;
+}
+.chat-input-row input {
+    flex:1;
+    padding:6px 10px;
+    background:#0d0d0d;
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:4px;
+    font-family:'Share Tech Mono',monospace;
+    font-size:10px;
+    outline:none;
+    min-width:80px;
+}
+.chat-input-row input:focus { border-color:var(--gold); }
+.chat-input-row .chat-buttons { display:flex; gap:3px; flex-wrap:wrap; }
+.chat-input-row .chat-buttons button {
+    padding:5px 10px;
+    border:none;
+    border-radius:4px;
+    cursor:pointer;
+    font-family:'Orbitron',sans-serif;
+    font-size:8px;
+    transition:all .2s ease;
+    color:#fff;
+}
+.chat-input-row .chat-buttons .send-btn { background:var(--gold); color:#0a0a0a; }
+.chat-input-row .chat-buttons .send-btn:hover { background:var(--gold-light); }
+.chat-input-row .chat-buttons .img-btn { background:#4466aa; }
+.chat-input-row .chat-buttons .img-btn:hover { background:#3355aa; }
+.chat-input-row .chat-buttons .audio-btn { background:#aa4488; }
+.chat-input-row .chat-buttons .audio-btn:hover { background:#883366; }
+.chat-input-row .chat-buttons .file-btn { background:#448866; }
+.chat-input-row .chat-buttons .file-btn:hover { background:#336655; }
+
+/* ===== ADMIN ===== */
+.admin-card {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:10px;
+    margin:6px 0;
+}
+.admin-card .card-title {
+    color: var(--gold);
+    font-size:9px;
+    font-weight:700;
+    font-family:'Orbitron',sans-serif;
+    letter-spacing:1px;
+    margin-bottom:4px;
+}
+.admin-card .card-info { font-size:10px; color:var(--text-dim); }
+.admin-card .card-actions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+.admin-card .btn-sm {
+    padding:4px 12px;
+    border:1px solid var(--border);
+    border-radius:4px;
+    color:var(--text);
+    cursor:pointer;
+    font-family:'Orbitron',sans-serif;
+    font-size:8px;
+    transition:all .3s ease;
+    background:var(--panel);
+}
+.admin-card .btn-sm:hover { background:var(--gold); color:#0a0a0a; border-color:var(--gold); }
+.admin-card .btn-sm.danger { border-color:var(--danger); color:var(--danger); }
+.admin-card .btn-sm.danger:hover { background:var(--danger); color:#fff; }
+.admin-card .btn-sm.success { border-color:var(--success); color:var(--success); }
+.admin-card .btn-sm.success:hover { background:var(--success); color:#fff; }
+
+/* ===== AFILIADO ===== */
+.afiliado-stats {
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr 1fr;
+    gap:6px;
+    margin:8px 0;
+}
+.afiliado-stats .stat-card {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    padding:8px 4px;
+    text-align:center;
+    border-radius:4px;
+}
+.afiliado-stats .stat-card .num {
+    font-size:16px;
+    font-family:'Orbitron',sans-serif;
+    color:var(--gold);
+}
+.afiliado-stats .stat-card .num.gold { color:var(--gold); }
+.afiliado-stats .stat-card .num.green { color:var(--success); }
+.afiliado-stats .stat-card .label {
+    font-size:7px;
+    letter-spacing:1px;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    margin-top:2px;
+}
+
+/* ===== LINK ===== */
+.link-box {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:8px 12px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:8px 0;
+    flex-wrap:wrap;
+}
+.link-box .link-text {
+    flex:1;
+    font-size:9px;
+    color:var(--gold);
+    word-break:break-all;
+    font-family:'Share Tech Mono',monospace;
+    min-width:80px;
+}
+.link-box .btn-copy-link {
+    padding:3px 12px;
+    background:var(--gold);
+    border:1px solid var(--gold);
+    border-radius:4px;
+    color:#0a0a0a;
+    cursor:pointer;
+    font-family:'Orbitron',sans-serif;
+    font-size:8px;
+    transition:all .3s ease;
+}
+.link-box .btn-copy-link:hover {
+    background:var(--gold-dark);
+}
+
+/* ===== CÓDIGOS ===== */
+.codigo-card {
+    background:var(--panel-light);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:10px;
+    margin:6px 0;
+}
+.codigo-card .codigo-title {
+    color: var(--success);
+    font-size:9px;
+    font-weight:700;
+    font-family:'Orbitron',sans-serif;
+    letter-spacing:1px;
+    margin-bottom:4px;
+}
+.codigo-card .codigo-input-row {
+    display:flex;
+    gap:4px;
+    flex-wrap:wrap;
+}
+.codigo-card .codigo-input-row input {
+    flex:1;
+    padding:5px 8px;
+    background:#0d0d0d;
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:4px;
+    font-family:'Share Tech Mono',monospace;
+    font-size:11px;
+    min-width:80px;
+    text-transform:uppercase;
+}
+.codigo-card .codigo-input-row input:focus {
+    border-color: var(--success);
+    outline:none;
+}
+.codigo-card .btn-resgatar {
+    padding:5px 14px;
+    background:var(--success);
+    border:1px solid var(--success);
+    border-radius:4px;
+    color:#fff;
+    cursor:pointer;
+    font-family:'Orbitron',sans-serif;
+    font-size:8px;
+    transition:all .3s ease;
+}
+.codigo-card .btn-resgatar:hover {
+    background:#1d7a4a;
+}
+
+/* ===== USER LIST ===== */
+.user-list-item {
+    display:flex;
+    justify-content:space-between;
+    padding:4px 6px;
+    border-bottom:1px solid var(--border);
+    font-size:9px;
+    color:var(--text);
+    align-items:center;
+    flex-wrap:wrap;
+    gap:2px;
+}
+.user-list-item .user-name { color:var(--gold); font-weight:bold; }
+.user-list-item .user-role {
+    font-size:7px;
+    padding:1px 8px;
+    border-radius:8px;
+    background:var(--panel);
+}
+.user-list-item .user-actions { display:flex; gap:3px; }
+.user-list-item .user-actions .btn-xs {
+    padding:1px 8px;
+    border-radius:3px;
+    border:1px solid var(--border);
+    font-size:7px;
+    cursor:pointer;
+    font-family:'Orbitron',sans-serif;
+    transition:all .2s ease;
+    background:var(--panel);
+    color:var(--text-dim);
+}
+.user-list-item .user-actions .btn-xs:hover { background:var(--gold); color:#0a0a0a; border-color:var(--gold); }
+.user-list-item .user-actions .btn-xs.danger { border-color:var(--danger); color:var(--danger); }
+.user-list-item .user-actions .btn-xs.danger:hover { background:var(--danger); color:#fff; }
+.user-list-item .user-actions .btn-xs.success { border-color:var(--success); color:var(--success); }
+.user-list-item .user-actions .btn-xs.success:hover { background:var(--success); color:#fff; }
+
+/* ===== AUDIO RECORDER ===== */
+.audio-recorder-container {
+    display:none;
+    align-items:center;
+    gap:4px;
+    background:var(--panel-light);
+    padding:4px 8px;
+    border-radius:4px;
+    border:1px solid var(--border);
+    width:100%;
+    flex-wrap:wrap;
+    margin-top:4px;
+}
+.audio-recorder-container.active { display:flex; }
+.audio-recorder-container .rec-timer {
+    font-family:'Orbitron',sans-serif;
+    font-size:11px;
+    color:var(--gold);
+    min-width:30px;
+}
+.audio-recorder-container .rec-wave {
+    flex:1;
+    height:14px;
+    display:flex;
+    align-items:center;
+    gap:2px;
+    min-width:40px;
+}
+.audio-recorder-container .rec-wave .bar {
+    width:2px;
+    background:var(--gold);
+    border-radius:2px;
+    transition:height .08s ease;
+    height:4px;
+}
+.audio-recorder-container .rec-actions { display:flex; gap:3px; flex-wrap:wrap; }
+.audio-recorder-container .rec-actions button {
+    padding:3px 8px;
+    border:none;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:8px;
+    font-weight:600;
+    transition:all .2s ease;
+    color:#fff;
+}
+.audio-recorder-container .rec-actions .rec-stop { background:var(--danger); }
+.audio-recorder-container .rec-actions .rec-cancel { background:#555; }
+.audio-recorder-container .rec-actions .rec-send { background:var(--success); }
+.audio-recorder-container .rec-actions .rec-send:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* ===== MULTIPLIER ===== */
+.multiplier-status {
+    display:inline-block;
+    padding:2px 12px;
+    border-radius:10px;
+    font-size:8px;
+    font-weight:bold;
+}
+.multiplier-status.dobro { background:var(--gold-dim); color:var(--gold); }
+.multiplier-status.triplo { background:var(--success-dim); color:var(--success); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width:500px) {
+    .hud { padding:18px 14px 16px; }
+    .menu-grid { grid-template-columns:1fr 1fr; }
+    .pix-table { grid-template-columns:1fr 1fr; }
+    .generator-grid { grid-template-columns:1fr; }
+    .bin-info-grid { grid-template-columns:1fr; }
+    .checker-stats { grid-template-columns:1fr 1fr; }
+    .afiliado-stats { grid-template-columns:1fr 1fr; }
+    .telemetry { gap:8px; font-size:7px; }
+    .chat-messages { height:150px; }
+}
+@media (max-width:380px) {
+    .menu-grid { grid-template-columns:1fr 1fr; }
+    .pix-table { grid-template-columns:1fr 1fr; }
+    .hud-head h1 { font-size:16px; }
+    .checker-stats { grid-template-columns:1fr 1fr; }
+    .afiliado-stats { grid-template-columns:1fr 1fr; }
+}
 </style>
 </head>
 <body>
-<!-- ===== TODO O HTML AQUI ===== -->
-<!-- (coloque todo o HTML da versão anterior aqui) -->
+<div class="wheel-bg"></div>
+<div class="wheel-ring"></div>
+
+<div class="telemetry">
+    <span>SYS: <b>ONLINE</b></span>
+    <span>SEC: <b>◈ DHARMA</b></span>
+    <span>UPLINK: <b class="blink">ESTÁVEL</b></span>
+    <span>NODE: <b id="node_name">MAHORAGA-01</b></span>
+    <span>HORA: <b id="clock">00:00:00</b></span>
+    <span>👥 <b id="online_count">0</b></span>
+    <span id="user_display" style="color:var(--gold);font-weight:bold;"></span>
+</div>
+
+<div class="stage">
+    <div class="hud" id="mainHud">
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+
+        <!-- ==================== LOGIN ==================== -->
+        <div id="section-login" class="section active">
+            <div class="hud-head">
+                <div class="status-line"><span class="dot"></span> TERMINAL DE ACESSO</div>
+                <h1><span class="crown">◈</span> ZTS SYSTEM</h1>
+                <span class="sub">MAHORAGA · DHARMA WHEEL</span>
+            </div>
+            <div class="divider-hud"></div>
+            <form id="loginForm">
+                <div class="field">
+                    <label>USUÁRIO</label>
+                    <div class="input-wrap">
+                        <input id="login_user" placeholder="id_de_acesso" required type="text">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>SENHA</label>
+                    <div class="input-wrap has-eye">
+                        <input id="login_pass" placeholder="••••••••" required type="password">
+                        <span class="toggle-eye" onclick="togglePass('login_pass', this)">◉</span>
+                    </div>
+                </div>
+                <button class="btn-hud" type="submit">CONECTAR</button>
+            </form>
+            <div class="switch-link">
+                Sem cadastro? <a href="#" onclick="showSection('cadastro')">Registrar novo acesso</a>
+            </div>
+            <div class="hud-footer">
+                <a href="https://t.me/zts_support" target="_blank">@zts_support</a> &nbsp;|&nbsp;
+                <a href="https://t.me/zts_center" target="_blank">GRUPO</a>
+            </div>
+        </div>
+
+        <!-- ==================== CADASTRO ==================== -->
+        <div id="section-cadastro" class="section">
+            <div class="hud-head">
+                <div class="status-line"><span class="dot"></span> NOVO REGISTRO</div>
+                <h1><span class="crown">◈</span> ZTS SYSTEM</h1>
+                <span class="sub">CRIAÇÃO DE IDENTIDADE</span>
+            </div>
+            <div class="divider-hud"></div>
+            <form id="cadastroForm">
+                <input name="ref" type="hidden" id="cadastro_ref" value="">
+                <div class="field">
+                    <label>USUÁRIO</label>
+                    <div class="input-wrap">
+                        <input id="cadastro_user" placeholder="escolha_seu_id" required type="text">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>SENHA</label>
+                    <div class="input-wrap has-eye">
+                        <input id="cadastro_pass" placeholder="••••••••" required type="password">
+                        <span class="toggle-eye" onclick="togglePass('cadastro_pass', this)">◉</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>CONFIRMAR SENHA</label>
+                    <div class="input-wrap has-eye">
+                        <input id="cadastro_pass2" placeholder="••••••••" required type="password">
+                        <span class="toggle-eye" onclick="togglePass('cadastro_pass2', this)">◉</span>
+                    </div>
+                </div>
+                <button class="btn-hud" type="submit">REGISTRAR</button>
+            </form>
+            <div class="switch-link">
+                Já possui acesso? <a href="#" onclick="showSection('login')">Voltar ao login</a>
+            </div>
+            <div class="hud-footer">
+                <a href="https://t.me/zts_support" target="_blank">@zts_support</a> &nbsp;|&nbsp;
+                <a href="https://t.me/zts_center" target="_blank">GRUPO</a>
+            </div>
+        </div>
+
+        <!-- ==================== PAINEL ==================== -->
+        <div id="section-painel" class="section">
+            <div class="hud-head">
+                <div class="status-line"><span class="dot"></span> <span id="painel_status">CONECTADO</span></div>
+                <h1><span class="crown">◈</span> ZTS SYSTEM</h1>
+                <span class="sub">MAHORAGA · DHARMA WHEEL</span>
+            </div>
+            <div class="divider-hud"></div>
+
+            <div class="perfil-info" id="perfil_info">
+                <div><b>◈</b> <span id="p_user">---</span> <span class="badge" id="p_badge">user</span></div>
+                <div><b>💰 CRÉDITOS:</b> <span class="creditos" id="p_creditos">0</span></div>
+                <div id="p_afiliado_info" style="display:none;"><b>🏆 COMISSÃO:</b> <span class="creditos-afiliado" id="p_comissao">0</span></div>
+            </div>
+
+            <div class="menu-grid">
+                <button class="btn-menu purple" onclick="showSection('checker')"><span class="icon">🔍</span>CHECKER</button>
+                <button class="btn-menu gold" onclick="showSection('gerador')"><span class="icon">⚡</span>GERADOR</button>
+                <button class="btn-menu gold" onclick="showSection('afiliado')"><span class="icon">🔗</span>AFILIADO</button>
+                <button class="btn-menu success" onclick="showSection('recarga')"><span class="icon">💳</span>RECARGA</button>
+                <button class="btn-menu purple" onclick="showSection('chat')"><span class="icon">💬</span>CHAT</button>
+                <button class="btn-menu" onclick="showSection('codigos')"><span class="icon">🎁</span>CÓDIGOS</button>
+                <button class="btn-menu danger" onclick="showSection('admin')" id="btn_admin" style="display:none;"><span class="icon">⚙️</span>ADMIN</button>
+            </div>
+
+            <div class="divider-hud"></div>
+
+            <!-- ===== CHECKER ===== -->
+            <div id="sub-checker" class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                    <span style="color:var(--purple);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">🔍 CHECKER DE CARTÕES</span>
+                    <span style="font-size:8px;color:var(--text-dim);">Custo: 1 crédito por cartão</span>
+                </div>
+                
+                <div class="gen-field">
+                    <label>COLE OS CARTÕES (1 por linha)</label>
+                    <textarea id="checker_cards" placeholder="4347691234567890|05|2028|123&#10;5154629876543210|10|2026|456">4347691234567890|05|2028|123</textarea>
+                </div>
+                
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;">
+                    <button class="btn-hud purple small" onclick="startChecker()" style="flex:1;">▶ INICIAR CHECK</button>
+                    <button class="btn-hud secondary small" onclick="clearChecker()" style="flex:1;">🗑 LIMPAR</button>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="checker_progress" style="width:0%;">0%</div>
+                </div>
+                
+                <div class="checker-stats">
+                    <div class="stat-card"><span class="num gold" id="ch_total">0</span><div class="label">Total</div></div>
+                    <div class="stat-card"><span class="num green" id="ch_live">0</span><div class="label">✅ Live</div></div>
+                    <div class="stat-card"><span class="num red" id="ch_dead">0</span><div class="label">❌ Dead</div></div>
+                </div>
+                
+                <div class="cards-container" id="checker_results">
+                    <div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Aguardando início...</div>
+                </div>
+                
+                <div class="counter-bar">
+                    <span>Live: <span class="count" id="ch_live_count">0</span> | Dead: <span class="count" id="ch_dead_count">0</span></span>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn-hud small secondary" onclick="copyCheckerResults()" style="border-color:var(--text-dim);color:var(--text-dim);font-size:8px;padding:4px 10px;">📋 COPIAR</button>
+                        <button class="btn-hud small secondary" onclick="downloadCheckerResults()" style="border-color:var(--text-dim);color:var(--text-dim);font-size:8px;padding:4px 10px;">⬇ BAIXAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== GERADOR ===== -->
+            <div id="sub-gerador" class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                    <span style="color:var(--purple);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">⚡ GERADOR DE CARTÕES</span>
+                    <span style="font-size:8px;color:var(--text-dim);">Luhn Check</span>
+                </div>
+                
+                <div class="generator-grid">
+                    <div class="gen-field" style="grid-column:1/3;">
+                        <label>BIN / DADOS PARCIAIS</label>
+                        <input id="gen_bin" placeholder="Ex: 4347690101xxxxx|07|28| ou 434769" value="515462xxxxxxxxxx|10|26|">
+                    </div>
+                    <div class="gen-field">
+                        <label>MÊS (opcional)</label>
+                        <select id="gen_month">
+                            <option value="">Aleatório</option>
+                            <option value="01">01</option><option value="02">02</option><option value="03">03</option>
+                            <option value="04">04</option><option value="05">05</option><option value="06">06</option>
+                            <option value="07">07</option><option value="08">08</option><option value="09">09</option>
+                            <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                        </select>
+                    </div>
+                    <div class="gen-field">
+                        <label>ANO (opcional)</label>
+                        <select id="gen_year">
+                            <option value="">Aleatório</option>
+                            <option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
+                            <option value="2028">2028</option><option value="2029">2029</option><option value="2030">2030</option>
+                            <option value="2031">2031</option><option value="2032">2032</option><option value="2033">2033</option>
+                            <option value="2034">2034</option><option value="2035">2035</option><option value="2036">2036</option>
+                            <option value="2037">2037</option><option value="2038">2038</option><option value="2039">2039</option>
+                            <option value="2040">2040</option>
+                        </select>
+                    </div>
+                    <div class="gen-field">
+                        <label>QUANTIDADE</label>
+                        <input id="gen_qty" type="number" min="1" max="100" value="10">
+                    </div>
+                    <div class="gen-field">
+                        <label>FORMATO</label>
+                        <select id="gen_format">
+                            <option value="simple">Simples</option>
+                            <option value="detailed">Detalhado</option>
+                            <option value="both">Ambos</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="bin-info-grid" id="bin_info">
+                    <span class="bin-label">Banco:</span><span class="bin-value" id="bin_bank">N/A</span>
+                    <span class="bin-label">Bandeira:</span><span class="bin-value" id="bin_brand">N/A</span>
+                    <span class="bin-label">Nível:</span><span class="bin-value" id="bin_level">N/A</span>
+                    <span class="bin-label">País:</span><span class="bin-value" id="bin_country">N/A</span>
+                    <span class="bin-label">Tipo:</span><span class="bin-value" id="bin_type">N/A</span>
+                    <span class="bin-label">Status:</span><span class="bin-value" id="bin_status" style="color:var(--success);">● ONLINE</span>
+                </div>
+                
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;">
+                    <button class="btn-hud purple small" onclick="generateCards()" style="flex:1;">GERAR</button>
+                    <button class="btn-hud secondary small" onclick="clearGenerator()" style="flex:1;">LIMPAR</button>
+                </div>
+                
+                <div id="cards_result">
+                    <div class="cards-container" id="cards_container">
+                        <div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Nenhum cartão gerado</div>
+                    </div>
+                    <div class="counter-bar">
+                        <span>Total: <span class="count" id="cards_count">0</span></span>
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn-hud small secondary" onclick="copyAllCards()" style="border-color:var(--text-dim);color:var(--text-dim);font-size:8px;padding:4px 10px;">📋 COPIAR</button>
+                            <button class="btn-hud small secondary" onclick="downloadCards()" style="border-color:var(--text-dim);color:var(--text-dim);font-size:8px;padding:4px 10px;">⬇ BAIXAR</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== AFILIADO ===== -->
+            <div id="sub-afiliado" class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                    <span style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">🔗 SISTEMA DE AFILIADOS</span>
+                    <span style="font-size:8px;color:var(--text-dim);">Comissão: 50%</span>
+                </div>
+                <div class="link-box">
+                    <span class="link-text" id="link-afiliado">carregando...</span>
+                    <button class="btn-copy-link" onclick="copiarLink()">📋 COPIAR</button>
+                </div>
+                <div class="afiliado-stats" id="afiliado_stats">
+                    <div class="stat-card"><span class="num gold" id="af_total">0</span><div class="label">Total Indicados</div></div>
+                    <div class="stat-card"><span class="num green" id="af_pagos">0</span><div class="label">Pagos</div></div>
+                    <div class="stat-card"><span class="num" id="af_pendentes">0</span><div class="label">Pendentes</div></div>
+                    <div class="stat-card"><span class="num gold" id="af_bonus_total">R$ 0</span><div class="label">Bônus</div></div>
+                </div>
+            </div>
+
+            <!-- ===== RECARGA ===== -->
+            <div id="sub-recarga" class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                    <span style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">💳 RECARGA VIA PIX</span>
+                    <span style="font-size:8px;color:var(--text-dim);">Bônus progressivos</span>
+                </div>
+                <div class="pix-table" id="pix_table">
+                    <div class="pix-item selected" data-valor="5" data-credito="5" data-bonus="0" onclick="selectPix(5,5,0)">
+                        <div class="valor">R$ 5</div>
+                        <div class="cred">+5 créditos</div>
+                    </div>
+                    <div class="pix-item" data-valor="10" data-credito="11" data-bonus="1" onclick="selectPix(10,11,1)">
+                        <div class="valor">R$ 10</div>
+                        <div class="cred">+11 créditos</div>
+                        <div class="bonus">🎁 +1</div>
+                    </div>
+                    <div class="pix-item" data-valor="20" data-credito="23" data-bonus="3" onclick="selectPix(20,23,3)">
+                        <div class="valor">R$ 20</div>
+                        <div class="cred">+23 créditos</div>
+                        <div class="bonus">🎁 +3</div>
+                    </div>
+                    <div class="pix-item" data-valor="50" data-credito="60" data-bonus="10" onclick="selectPix(50,60,10)">
+                        <div class="valor">R$ 50</div>
+                        <div class="cred">+60 créditos</div>
+                        <div class="bonus">🎁 +10</div>
+                    </div>
+                    <div class="pix-item" data-valor="100" data-credito="130" data-bonus="30" onclick="selectPix(100,130,30)">
+                        <div class="valor">R$ 100</div>
+                        <div class="cred">+130 créditos</div>
+                        <div class="bonus">🎁 +30</div>
+                    </div>
+                    <div class="pix-item" data-valor="200" data-credito="280" data-bonus="80" onclick="selectPix(200,280,80)">
+                        <div class="valor">R$ 200</div>
+                        <div class="cred">+280 créditos</div>
+                        <div class="bonus">🎁 +80</div>
+                    </div>
+                </div>
+                <input type="hidden" id="pix_valor" value="5">
+                <div id="pix_info" style="font-size:9px;color:var(--gold);text-align:center;margin:4px 0;">💳 Recarga de R$ 5.00 | +5 créditos</div>
+                <button class="btn-hud success" onclick="gerarPix()" style="margin-top:2px;">GERAR PIX</button>
+                <div id="pix_resultado" style="display:none;margin-top:6px;">
+                    <div class="pix-code-box" id="pix_codigo">Código PIX: </div>
+                    <div class="qr-container"><img id="pix_qr" src="" alt="QR Code"></div>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        <button class="btn-hud small success" onclick="copiarPix()">📋 COPIAR</button>
+                        <button class="btn-hud small secondary" onclick="fecharPix()">✕ FECHAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== CHAT ===== -->
+            <div id="sub-chat" class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
+                    <span style="color:var(--purple);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">💬 CHAT GLOBAL</span>
+                    <span style="font-size:8px;color:var(--text-dim);" id="chat_user_count">0 online</span>
+                </div>
+                <div class="chat-messages" id="chat_messages">
+                    <div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Carregando mensagens...</div>
+                </div>
+                <div class="chat-input-row">
+                    <input id="chat_input" placeholder="Digite sua mensagem..." onkeypress="if(event.key==='Enter')enviarMensagem()">
+                    <div class="chat-buttons">
+                        <button class="send-btn" onclick="enviarMensagem()">➤</button>
+                        <button class="img-btn" onclick="document.getElementById('chat_img_input').click()">🖼</button>
+                        <button class="audio-btn" onclick="toggleAudioRecorder()">🎤</button>
+                        <button class="file-btn" onclick="document.getElementById('chat_file_input').click()">📎</button>
+                    </div>
+                </div>
+                <input type="file" id="chat_img_input" accept="image/*" style="display:none" onchange="enviarImagem(this)">
+                <input type="file" id="chat_file_input" style="display:none" onchange="enviarArquivo(this)">
+                <div class="audio-recorder-container" id="audio_recorder">
+                    <span class="rec-timer" id="rec_timer">00:00</span>
+                    <div class="rec-wave" id="rec_wave">
+                        <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                        <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                        <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                    </div>
+                    <div class="rec-actions">
+                        <button class="rec-stop" onclick="pararGravacao()">⏹</button>
+                        <button class="rec-cancel" onclick="cancelarGravacao()">✕</button>
+                        <button class="rec-send" id="rec_send_btn" disabled onclick="enviarAudio()">📤</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== CÓDIGOS ===== -->
+            <div id="sub-codigos" class="section">
+                <div class="codigo-card">
+                    <div class="codigo-title">🎁 RESGATAR CÓDIGO</div>
+                    <div class="codigo-input-row">
+                        <input id="input-codigo" placeholder="EX: ZTS2025" maxlength="20">
+                        <button class="btn-resgatar" onclick="resgatarCodigo()">RESGATAR</button>
+                    </div>
+                    <div style="font-size:8px;color:var(--text-dim);margin-top:4px;">Códigos promocionais gerados pelo admin</div>
+                </div>
+                <div style="margin-top:6px;font-size:9px;color:var(--text-dim);">📜 Códigos resgatados: <span id="codigos_resgatados">0</span></div>
+            </div>
+
+            <!-- ===== ADMIN ===== -->
+            <div id="sub-admin" class="section">
+                <div style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;margin-bottom:6px;">⚙️ PAINEL ADMINISTRATIVO</div>
+                
+                <div class="admin-card">
+                    <div class="card-title">👥 GERENCIAR USUÁRIOS</div>
+                    <div id="admin_user_list" style="max-height:120px;overflow-y:auto;">
+                        <div style="text-align:center;color:var(--text-dim);padding:8px 0;font-size:9px;">Carregando...</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn-sm" onclick="adminCriarUsuario()">➕ NOVO</button>
+                        <button class="btn-sm" onclick="adminAtualizarLista()">🔄 ATUALIZAR</button>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="card-title">🎁 GERAR CÓDIGOS</div>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0;">
+                        <input id="admin_codigo_creditos" placeholder="Créditos" type="number" style="flex:1;padding:4px 8px;background:#0d0d0d;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:10px;min-width:60px;">
+                        <input id="admin_codigo_prefix" placeholder="Prefix (ex: ZTS)" style="flex:1;padding:4px 8px;background:#0d0d0d;border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:10px;min-width:60px;">
+                        <button class="btn-sm" onclick="adminGerarCodigo()">GERAR</button>
+                    </div>
+                    <div id="admin_codigos_list" style="font-size:9px;color:var(--text-dim);max-height:60px;overflow-y:auto;"></div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="card-title">📈 MULTIPLICADOR</div>
+                    <div class="card-actions">
+                        <button class="btn-sm success" id="mult_off" onclick="adminSetMultiplier(1)">⬜ OFF</button>
+                        <button class="btn-sm" id="mult_dobro" onclick="adminSetMultiplier(2)">◈ 2x</button>
+                        <button class="btn-sm" id="mult_triplo" onclick="adminSetMultiplier(3)">◈ 3x</button>
+                    </div>
+                    <div id="multiplier_status_display" style="margin-top:3px;"></div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="card-title">🔊 ÁUDIO DE APROVAÇÃO</div>
+                    <div class="card-info">Som tocado quando uma CC/GG é aprovada</div>
+                    <div class="card-actions">
+                        <button class="btn-sm" onclick="adminUploadAudio()">📤 UPLOAD</button>
+                        <button class="btn-sm success" onclick="adminTestAudio()">▶ TESTAR</button>
+                        <button class="btn-sm danger" onclick="adminRemoveAudio()">🗑 REMOVER</button>
+                    </div>
+                    <div class="card-info" id="audio_status" style="margin-top:3px;font-size:8px;">Nenhum áudio carregado</div>
+                </div>
+
+                <div class="admin-card" style="border-color:var(--danger);">
+                    <div class="card-title" style="color:var(--danger);">⚠️ ÁREA PERIGOSA</div>
+                    <div class="card-actions">
+                        <button class="btn-sm danger" onclick="adminClearAll()">🗑 LIMPAR DADOS</button>
+                        <button class="btn-sm danger" onclick="adminResetSystem()">🔄 REINICIAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider-hud"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn-hud small danger" onclick="logout()" style="width:auto;">🚪 SAIR</button>
+                <button class="btn-hud small secondary" onclick="showSection('painel')" style="width:auto;">🏠 PAINEL</button>
+            </div>
+            <div class="hud-footer" style="margin-top:8px;">
+                <a href="https://t.me/zts_support" target="_blank">@zts_support</a> &nbsp;|&nbsp;
+                <a href="https://t.me/zts_center" target="_blank">GRUPO</a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<audio id="som_aprovado" style="display:none;"></audio>
 
 <script>
 // ===================== CONFIGURAÇÃO =====================
-// ⚠️ IMPORTANTE: Detecta a URL automaticamente!
 const SERVER_URL = window.location.origin;
+const API_KEY = 'pub_2HT17PrC7sOCvNp1qwb9XBhb1RO';
 
 let socket = null;
 let currentUser = null;
 let isConnected = false;
+let generatedCards = [];
+let checkerResults = [];
+let isChecking = false;
+let binData = {};
 
-// ===================== CONEXÃO COM O SERVIDOR =====================
-
-function conectarServidor() {
-    try {
-        console.log('🔄 Conectando ao servidor:', SERVER_URL);
-        
-        socket = io(SERVER_URL, {
-            reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 1000,
-            timeout: 10000
-        });
-        
-        socket.on('connect', () => {
-            isConnected = true;
-            console.log('✅ Conectado ao servidor!');
-            document.getElementById('online_count').textContent = '● ONLINE';
-            document.getElementById('online_count').style.color = 'var(--success)';
-        });
-        
-        socket.on('disconnect', () => {
-            isConnected = false;
-            console.log('❌ Desconectado do servidor');
-            document.getElementById('online_count').textContent = '● OFFLINE';
-            document.getElementById('online_count').style.color = 'var(--danger)';
-        });
-        
-        socket.on('historico', (msgs) => {
-            console.log('📜 Histórico recebido:', msgs.length);
-            if (msgs && msgs.length > 0) {
-                mockData.messages = msgs;
-                atualizarChat();
-            }
-        });
-        
-        socket.on('mensagem_recebida', (msg) => {
-            console.log('💬 Nova mensagem de:', msg.user);
-            mockData.messages.push(msg);
-            atualizarChat();
-        });
-        
-        socket.on('usuarios_online', (users) => {
-            document.getElementById('online_count').textContent = users.length + ' online';
-            document.getElementById('online_count').style.color = 'var(--text)';
-        });
-        
-        socket.on('connect_error', (error) => {
-            console.error('❌ Erro de conexão:', error);
-            document.getElementById('online_count').textContent = '⚠️ ERRO';
-            document.getElementById('online_count').style.color = 'var(--danger)';
-        });
-        
-    } catch(e) {
-        console.error('❌ Erro ao conectar:', e);
-        document.getElementById('online_count').textContent = '⚠️ ERRO';
-        document.getElementById('online_count').style.color = 'var(--danger)';
-    }
-}
-
-// ===================== FUNÇÕES DE API =====================
-
-async function apiRequest(endpoint, data) {
-    try {
-        const url = SERVER_URL + endpoint;
-        console.log('📡 Requisição:', url, data);
-        
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        const result = await response.json();
-        console.log('📡 Resposta:', result);
-        return result;
-    } catch(e) {
-        console.error('❌ Erro na API:', e);
-        return { success: false, error: 'Erro de conexão: ' + e.message };
-    }
-}
-
-async function apiGet(endpoint) {
-    try {
-        const url = SERVER_URL + endpoint;
-        console.log('📡 GET:', url);
-        
-        const response = await fetch(url);
-        const result = await response.json();
-        console.log('📡 Resposta:', result);
-        return result;
-    } catch(e) {
-        console.error('❌ Erro na API:', e);
-        return { success: false, error: 'Erro de conexão' };
-    }
-}
-
-// ===================== DADOS MOCK =====================
+// ===================== DADOS =====================
 let mockData = {
-    users: [],
-    messages: [],
+    users: [
+        { id: 'admin', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '' },
+        { id: 'zts', password: 'zts123', role: 'admin', creditos: 5000, comissao: 0, ref: '' },
+        { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '' }
+    ],
+    messages: [
+        { user: 'SISTEMA', text: '◈ Sistema ZTS online!', time: Date.now(), role: 'master', tipo: 'texto' }
+    ],
     indicacoes: [],
     codigos: [],
     codigosUsados: [],
@@ -151,6 +1446,108 @@ let mockData = {
     recargas: []
 };
 
+// ===================== UTILIDADES =====================
+function togglePass(id, icon) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    if (input.type === 'password') { input.type = 'text'; icon.textContent = '◈'; }
+    else { input.type = 'password'; icon.textContent = '◉'; }
+}
+
+function showSection(id) {
+    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    
+    if (['checker','gerador','afiliado','recarga','chat','codigos','admin'].includes(id)) {
+        document.getElementById('section-painel').classList.add('active');
+        document.querySelectorAll('#section-painel .section').forEach(el => el.classList.remove('active'));
+        const sub = document.getElementById('sub-' + id);
+        if (sub) sub.classList.add('active');
+        currentSection = id;
+        if (id === 'afiliado') atualizarAfiliado();
+        if (id === 'admin') adminAtualizarLista();
+        if (id === 'chat') atualizarChat();
+        return;
+    }
+    const el = document.getElementById('section-' + id);
+    if (el) el.classList.add('active');
+    currentSection = id;
+}
+
+// ===================== RELÓGIO =====================
+function tickClock() {
+    const el = document.getElementById('clock');
+    if (!el) return;
+    const d = new Date();
+    const pad = n => n.toString().padStart(2,'0');
+    el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ===================== FUNÇÕES DE API =====================
+
+async function apiRequest(endpoint, data) {
+    try {
+        const response = await fetch(SERVER_URL + endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+async function apiGet(endpoint) {
+    try {
+        const response = await fetch(SERVER_URL + endpoint);
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+// ===================== SOCKET =====================
+
+function conectarServidor() {
+    try {
+        socket = io(SERVER_URL, { reconnection: true, reconnectionAttempts: 10 });
+        
+        socket.on('connect', () => {
+            isConnected = true;
+            document.getElementById('online_count').textContent = '● ONLINE';
+            document.getElementById('online_count').style.color = 'var(--success)';
+        });
+        
+        socket.on('disconnect', () => {
+            isConnected = false;
+            document.getElementById('online_count').textContent = '● OFFLINE';
+            document.getElementById('online_count').style.color = 'var(--danger)';
+        });
+        
+        socket.on('historico', (msgs) => {
+            if (msgs && msgs.length > 0) {
+                mockData.messages = msgs;
+                atualizarChat();
+            }
+        });
+        
+        socket.on('mensagem_recebida', (msg) => {
+            mockData.messages.push(msg);
+            atualizarChat();
+        });
+        
+        socket.on('usuarios_online', (users) => {
+            document.getElementById('online_count').textContent = users.length + ' online';
+        });
+    } catch(e) {
+        console.error('Erro ao conectar:', e);
+    }
+}
+
 // ===================== LOGIN =====================
 document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -158,11 +1555,9 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     const pass = document.getElementById('login_pass').value.trim();
     
     if (!user || !pass) {
-        Swal.fire({ title: 'Preencha todos os campos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        Swal.fire({ title: 'Preencha todos os campos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
-    
-    console.log('🔑 Tentando login:', user);
     
     const result = await apiRequest('/api/login', { user, pass });
     
@@ -170,18 +1565,41 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         currentUser = result.user;
         document.getElementById('user_display').textContent = '◈ ' + user;
         entrarPainel();
-        
-        // Conectar ao socket se não estiver conectado
-        if (!socket || !socket.connected) {
-            conectarServidor();
-        }
+        if (!socket || !socket.connected) conectarServidor();
     } else {
-        Swal.fire({ title: '❌ Acesso negado', text: result.error || 'Usuário ou senha inválidos', icon: 'error', toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, background: '#111', color: '#fff' });
+        Swal.fire({ title: '❌ Acesso negado', text: result.error || 'Usuário ou senha inválidos', icon: 'error', toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
     }
 });
 
-// ===================== FUNÇÕES DO SISTEMA =====================
+// ===================== CADASTRO =====================
+document.getElementById('cadastroForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const user = document.getElementById('cadastro_user').value.trim();
+    const pass = document.getElementById('cadastro_pass').value;
+    const pass2 = document.getElementById('cadastro_pass2').value;
+    const ref = document.getElementById('cadastro_ref').value.trim();
+    
+    if (pass !== pass2) {
+        Swal.fire({ title: '❌ Senhas não coincidem', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    if (user.length < 3) {
+        Swal.fire({ title: '❌ Mínimo 3 caracteres', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    
+    const result = await apiRequest('/api/register', { user, pass, ref });
+    
+    if (result.success) {
+        Swal.fire({ title: '✅ Cadastro realizado!', text: 'Agora faça login', icon: 'success', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        showSection('login');
+        document.getElementById('login_user').value = user;
+    } else {
+        Swal.fire({ title: '❌ Erro', text: result.error || 'Erro ao cadastrar', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
+});
 
+// ===================== PAINEL =====================
 function entrarPainel() {
     showSection('painel');
     document.getElementById('p_user').textContent = currentUser.id;
@@ -203,54 +1621,8 @@ function entrarPainel() {
     }
     
     document.getElementById('link-afiliado').textContent = window.location.origin + '/?ref=' + currentUser.id;
-    
     atualizarAfiliado();
     atualizarChat();
-}
-
-function showSection(id) {
-    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-    
-    if (['gerador','afiliado','recarga','chat','codigos','admin'].includes(id)) {
-        document.getElementById('section-painel').classList.add('active');
-        document.querySelectorAll('#section-painel .section').forEach(el => el.classList.remove('active'));
-        const sub = document.getElementById('sub-' + id);
-        if (sub) sub.classList.add('active');
-        currentSection = id;
-        if (id === 'afiliado') atualizarAfiliado();
-        if (id === 'admin') adminAtualizarLista();
-        if (id === 'chat') atualizarChat();
-        return;
-    }
-    
-    const el = document.getElementById('section-' + id);
-    if (el) el.classList.add('active');
-    currentSection = id;
-}
-
-function atualizarChat() {
-    const container = document.getElementById('chat_messages');
-    const msgs = mockData.messages || [];
-    if (msgs.length === 0) {
-        container.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.06);padding:20px 0;font-size:10px;">Nenhuma mensagem</div>';
-        return;
-    }
-    let html = '';
-    msgs.slice(-50).forEach(msg => {
-        const userClass = (msg.role === 'admin' || msg.role === 'master') ? 'admin-name' : '';
-        const time = new Date(msg.time).toLocaleTimeString();
-        html += `<div class="msg-chat"><span class="user ${userClass}">${msg.user}</span> ${msg.text} <span class="time">${time}</span></div>`;
-    });
-    container.innerHTML = html;
-    container.scrollTop = container.scrollHeight;
-}
-
-function atualizarAfiliado() {
-    // Implementação simplificada
-}
-
-function adminAtualizarLista() {
-    // Implementação simplificada
 }
 
 function logout() {
@@ -265,28 +1637,422 @@ function logout() {
     document.getElementById('login_pass').value = '';
 }
 
+// ===================== CHAT =====================
+function atualizarChat() {
+    const container = document.getElementById('chat_messages');
+    const msgs = mockData.messages || [];
+    if (msgs.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Nenhuma mensagem</div>';
+        return;
+    }
+    let html = '';
+    msgs.slice(-50).forEach(msg => {
+        const time = new Date(msg.time).toLocaleTimeString();
+        html += `<div class="msg-chat"><span class="user">${msg.user}</span> ${msg.text} <span class="time">${time}</span></div>`;
+    });
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
+}
+
 function enviarMensagem() {
     const input = document.getElementById('chat_input');
     const text = input.value.trim();
-    if (!text || !currentUser || !socket || !socket.connected) {
-        if (!socket || !socket.connected) {
-            Swal.fire({ title: '⚠️ Servidor desconectado', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
-        }
-        return;
-    }
+    if (!text || !currentUser || !socket || !socket.connected) return;
     
-    const msg = {
-        user: currentUser.id,
-        text: text,
-        role: currentUser.role,
-        tipo: 'texto'
-    };
-    
-    socket.emit('nova_mensagem', msg);
+    socket.emit('nova_mensagem', { user: currentUser.id, text, role: currentUser.role, tipo: 'texto' });
     input.value = '';
 }
 
-// ===================== GERADOR DE CARTÕES =====================
+function enviarImagem(input) {
+    if (!input.files || !input.files[0] || !currentUser) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        if (socket && socket.connected) {
+            socket.emit('nova_mensagem', { user: currentUser.id, text: '📷 Imagem', role: currentUser.role, tipo: 'imagem', url: e.target.result });
+        }
+        input.value = '';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+function enviarArquivo(input) {
+    if (!input.files || !input.files[0] || !currentUser) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        if (socket && socket.connected) {
+            socket.emit('nova_mensagem', { user: currentUser.id, text: '📎 ' + input.files[0].name, role: currentUser.role, tipo: 'arquivo', url: e.target.result, nome: input.files[0].name });
+        }
+        input.value = '';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+// ===================== ÁUDIO CHAT =====================
+function toggleAudioRecorder() {
+    const container = document.getElementById('audio_recorder');
+    if (container.classList.contains('active')) { cancelarGravacao(); return; }
+    
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        Swal.fire({ title: '❌ Não suportado', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            window.audioRecorder = new MediaRecorder(stream);
+            window.audioChunks = [];
+            window.audioBlob = null;
+            
+            window.audioRecorder.ondataavailable = e => { if (e.data.size > 0) window.audioChunks.push(e.data); };
+            window.audioRecorder.onstop = () => {
+                window.audioBlob = new Blob(window.audioChunks, { type: 'audio/webm' });
+                document.getElementById('rec_send_btn').disabled = false;
+                stream.getTracks().forEach(track => track.stop());
+            };
+            
+            window.audioRecorder.start();
+            container.classList.add('active');
+            document.getElementById('chat_audio_btn').classList.add('recording');
+            window.recSeconds = 0;
+            document.getElementById('rec_timer').textContent = '00:00';
+            document.getElementById('rec_send_btn').disabled = true;
+            
+            clearInterval(window.recInterval);
+            window.recInterval = setInterval(() => {
+                window.recSeconds++;
+                const mins = String(Math.floor(window.recSeconds / 60)).padStart(2, '0');
+                const secs = String(window.recSeconds % 60).padStart(2, '0');
+                document.getElementById('rec_timer').textContent = mins + ':' + secs;
+                const bars = document.querySelectorAll('#rec_wave .bar');
+                bars.forEach(bar => bar.style.height = (4 + Math.random() * 14) + 'px');
+            }, 1000);
+        })
+        .catch(() => {
+            Swal.fire({ title: '❌ Erro no microfone', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        });
+}
+
+function pararGravacao() {
+    if (window.audioRecorder && window.audioRecorder.state === 'recording') {
+        window.audioRecorder.stop();
+        clearInterval(window.recInterval);
+        document.getElementById('chat_audio_btn').classList.remove('recording');
+    }
+}
+
+function cancelarGravacao() {
+    if (window.audioRecorder && window.audioRecorder.state === 'recording') window.audioRecorder.stop();
+    clearInterval(window.recInterval);
+    document.getElementById('audio_recorder').classList.remove('active');
+    document.getElementById('chat_audio_btn').classList.remove('recording');
+    window.audioChunks = [];
+    window.audioBlob = null;
+    document.getElementById('rec_send_btn').disabled = true;
+    document.getElementById('rec_timer').textContent = '00:00';
+    document.querySelectorAll('#rec_wave .bar').forEach(bar => bar.style.height = '4px');
+}
+
+function enviarAudio() {
+    if (!window.audioBlob || !currentUser) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        if (socket && socket.connected) {
+            socket.emit('nova_mensagem', { user: currentUser.id, text: '🎤 Áudio', role: currentUser.role, tipo: 'audio', url: e.target.result });
+        }
+        cancelarGravacao();
+        Swal.fire({ title: '✅ Áudio enviado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    };
+    reader.readAsDataURL(window.audioBlob);
+}
+
+// ===================== AFILIADO =====================
+function atualizarAfiliado() {
+    if (!currentUser) return;
+    document.getElementById('af_total').textContent = '0';
+    document.getElementById('af_pagos').textContent = '0';
+    document.getElementById('af_pendentes').textContent = '0';
+    document.getElementById('af_bonus_total').textContent = 'R$ 0,00';
+}
+
+function copiarLink() {
+    const link = document.getElementById('link-afiliado').textContent;
+    navigator.clipboard.writeText(link).catch(() => {});
+    Swal.fire({ title: '✅ Link copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+}
+
+// ===================== RECARGA =====================
+function selectPix(valor, credito, bonus) {
+    document.querySelectorAll('.pix-item').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.pix-item').forEach(el => {
+        if (parseFloat(el.dataset.valor) === valor) el.classList.add('selected');
+    });
+    document.getElementById('pix_valor').value = valor;
+    let msg = '💳 Recarga de R$ ' + valor.toFixed(2) + ' | +' + credito + ' créditos';
+    if (bonus > 0) msg += ' | 🎁 BÔNUS: +' + bonus + '!';
+    document.getElementById('pix_info').innerHTML = msg;
+}
+
+function gerarPix() {
+    const valor = parseFloat(document.getElementById('pix_valor').value);
+    const pixItem = document.querySelector(`.pix-item[data-valor="${valor}"]`);
+    const credito = pixItem ? parseInt(pixItem.dataset.credito) : valor;
+    
+    const codigo = 'pix-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2,6).toUpperCase();
+    document.getElementById('pix_codigo').textContent = 'Código PIX: ' + codigo;
+    document.getElementById('pix_qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(codigo);
+    document.getElementById('pix_resultado').style.display = 'block';
+    
+    setTimeout(async () => {
+        const result = await apiRequest('/api/addcredits', { user: currentUser.id, credits: credito });
+        if (result.success) {
+            currentUser.creditos = result.creditos;
+            document.getElementById('p_creditos').textContent = result.creditos;
+            Swal.fire({ title: '✅ Pagamento confirmado!', text: '+' + credito + ' créditos', icon: 'success', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            playSomAprovado();
+        }
+    }, 5000);
+}
+
+function copiarPix() {
+    const texto = document.getElementById('pix_codigo').textContent;
+    navigator.clipboard.writeText(texto).catch(() => {});
+    Swal.fire({ title: '✅ Código copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+}
+
+function fecharPix() {
+    document.getElementById('pix_resultado').style.display = 'none';
+}
+
+// ===================== CÓDIGOS =====================
+async function resgatarCodigo() {
+    if (!currentUser) return;
+    const codigo = document.getElementById('input-codigo').value.trim().toUpperCase();
+    if (!codigo) {
+        Swal.fire({ title: 'Digite um código', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    
+    const result = await apiRequest('/api/resgatar', { user: currentUser.id, codigo });
+    if (result.success) {
+        currentUser.creditos = result.creditos;
+        document.getElementById('p_creditos').textContent = result.creditos;
+        document.getElementById('codigos_resgatados').textContent = mockData.codigosUsados.length;
+        Swal.fire({ title: '✅ Resgatado!', text: '+' + result.ganhos + ' créditos!', icon: 'success', timer: 2500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        document.getElementById('input-codigo').value = '';
+        playSomAprovado();
+    } else {
+        Swal.fire({ title: '❌ Erro', text: result.error || 'Código inválido', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
+}
+
+// ===================== CHECKER =====================
+
+function detectBandeira(numero) {
+    if (numero.startsWith('3')) return 'AMEX';
+    if (numero.startsWith('4')) return 'VISA';
+    if (numero.startsWith('5')) return 'MASTERCARD';
+    if (numero.startsWith('6')) return 'DISCOVER';
+    return 'DESCONHECIDO';
+}
+
+function formatCardMasked(card) {
+    return card.substring(0, 4) + '••••••••' + card.substring(card.length - 4);
+}
+
+function agrupar(numero) {
+    if (numero.length === 15) {
+        return numero.substring(0,4) + '+' + numero.substring(4,10) + '+' + numero.substring(10);
+    }
+    let parts = [];
+    for (let i = 0; i < numero.length; i += 4) {
+        parts.push(numero.substring(i, i + 4));
+    }
+    return parts.join('+');
+}
+
+async function validarCartao(cardData) {
+    try {
+        const partes = cardData.split('|');
+        const CARD = partes[0].replace(/\s/g, '');
+        const MES = partes[1].trim();
+        let ANO = partes[2].trim();
+        const CVV = partes[3].trim();
+        
+        if (ANO.length === 2) ANO = '20' + ANO;
+        
+        const bandeira = detectBandeira(CARD);
+        
+        // Simulação - Substituir pelo checker real
+        const isLive = Math.random() > 0.6;
+        
+        return {
+            success: true,
+            live: isLive,
+            card: CARD,
+            mes: MES,
+            ano: ANO,
+            cvv: CVV,
+            bandeira: bandeira,
+            formatted: formatCardMasked(CARD)
+        };
+    } catch(e) {
+        return { success: false, error: e.message };
+    }
+}
+
+async function startChecker() {
+    if (isChecking) return;
+    if (!currentUser) {
+        Swal.fire({ title: '⚠️ Faça login primeiro', icon: 'warning', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    
+    const textarea = document.getElementById('checker_cards');
+    const lines = textarea.value.split('\n').filter(line => line.trim());
+    
+    if (lines.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum cartão para validar', icon: 'warning', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    
+    if (currentUser.creditos < lines.length) {
+        Swal.fire({ 
+            title: '❌ Créditos insuficientes!', 
+            text: `Você tem ${currentUser.creditos} créditos, precisa de ${lines.length}`,
+            icon: 'error',
+            toast: true,
+            position: 'top-end',
+            timer: 3000,
+            showConfirmButton: false,
+            background: '#141414',
+            color: '#e8e8e8'
+        });
+        return;
+    }
+    
+    isChecking = true;
+    checkerResults = [];
+    let live = 0, dead = 0;
+    
+    const container = document.getElementById('checker_results');
+    container.innerHTML = '';
+    
+    const progress = document.getElementById('checker_progress');
+    
+    for (let i = 0; i < lines.length; i++) {
+        const cardLine = lines[i].trim();
+        
+        const pct = ((i + 1) / lines.length * 100);
+        progress.style.width = pct + '%';
+        progress.textContent = Math.round(pct) + '%';
+        
+        const result = await validarCartao(cardLine);
+        
+        if (result.success) {
+            if (result.live) {
+                live++;
+                currentUser.creditos--;
+                document.getElementById('p_creditos').textContent = currentUser.creditos;
+                await apiRequest('/api/addcredits', { user: currentUser.id, credits: -1 });
+            } else {
+                dead++;
+            }
+            
+            checkerResults.push(result);
+            
+            const div = document.createElement('div');
+            div.className = 'card-item';
+            const statusClass = result.live ? 'live' : 'dead';
+            const statusText = result.live ? '✅ LIVE' : '❌ DEAD';
+            div.innerHTML = `
+                <span class="card-number">${result.formatted}</span>
+                <span class="card-details">${result.mes}/${result.ano.substring(2)} CVV:${result.cvv}</span>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+            `;
+            container.appendChild(div);
+        } else {
+            const div = document.createElement('div');
+            div.className = 'card-item';
+            div.innerHTML = `
+                <span class="card-number">${cardLine.substring(0, 15)}...</span>
+                <span class="status-badge" style="background:var(--danger-dim);color:var(--danger);">⚠️ ERRO</span>
+            `;
+            container.appendChild(div);
+        }
+        
+        document.getElementById('ch_total').textContent = i + 1;
+        document.getElementById('ch_live').textContent = live;
+        document.getElementById('ch_dead').textContent = dead;
+        document.getElementById('ch_live_count').textContent = live;
+        document.getElementById('ch_dead_count').textContent = dead;
+        
+        await new Promise(r => setTimeout(r, 500));
+    }
+    
+    isChecking = false;
+    
+    if (live > 0) playSomAprovado();
+    
+    Swal.fire({ 
+        title: '✅ Check concluído!', 
+        text: `${live} LIVE(s) encontrado(s)! Créditos restantes: ${currentUser.creditos}`,
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false,
+        background: '#141414',
+        color: '#e8e8e8'
+    });
+}
+
+function clearChecker() {
+    document.getElementById('checker_cards').value = '';
+    document.getElementById('checker_results').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Aguardando início...</div>';
+    document.getElementById('checker_progress').style.width = '0%';
+    document.getElementById('checker_progress').textContent = '0%';
+    document.getElementById('ch_total').textContent = '0';
+    document.getElementById('ch_live').textContent = '0';
+    document.getElementById('ch_dead').textContent = '0';
+    document.getElementById('ch_live_count').textContent = '0';
+    document.getElementById('ch_dead_count').textContent = '0';
+    checkerResults = [];
+}
+
+function copyCheckerResults() {
+    if (checkerResults.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum resultado', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    let text = '';
+    checkerResults.forEach(r => {
+        if (r.success && r.live) {
+            text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`;
+        }
+    });
+    navigator.clipboard.writeText(text).catch(() => {});
+    Swal.fire({ title: '✅ Copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+}
+
+function downloadCheckerResults() {
+    if (checkerResults.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum resultado', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    let text = '';
+    checkerResults.forEach(r => {
+        if (r.success && r.live) {
+            text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`;
+        }
+    });
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lives_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ===================== GERADOR =====================
 
 function luhnCheck(cardNumber) {
     const digits = cardNumber.split('').map(Number);
@@ -300,8 +2066,18 @@ function luhnCheck(cardNumber) {
     return sum % 10 === 0;
 }
 
+function processBinWithX(binString) {
+    if (!binString.includes('x') && !binString.includes('X')) return binString;
+    let result = '';
+    for (let char of binString) {
+        if (char.toLowerCase() === 'x') result += Math.floor(Math.random() * 10);
+        else result += char;
+    }
+    return result;
+}
+
 function generateValidCard(binStart) {
-    const processedBin = binStart.replace(/[xX]/g, () => Math.floor(Math.random() * 10));
+    const processedBin = processBinWithX(binStart);
     const cardLength = (processedBin.startsWith('34') || processedBin.startsWith('37')) ? 15 : 16;
     
     while (true) {
@@ -324,22 +2100,25 @@ function generateValidCard(binStart) {
 
 function generateCompleteCard(binStart, fixedMonth = null, fixedYear = null) {
     const cardNumber = generateValidCard(binStart);
-    let month, year;
+    let month, year, displayYear;
     
     if (fixedMonth && fixedYear) {
         month = fixedMonth;
         year = fixedYear;
+        displayYear = year.toString().length === 4 ? year : `20${year}`;
     } else {
-        month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+        month = Math.floor(Math.random() * 12) + 1;
         year = Math.floor(Math.random() * (2040 - 2025 + 1)) + 2025;
+        displayYear = year;
     }
+    month = month.toString().padStart(2, '0');
     
     const isAmex = binStart.startsWith('34') || binStart.startsWith('37');
     const cvvLength = isAmex ? 4 : 3;
     let cvv = '';
     for (let i = 0; i < cvvLength; i++) cvv += Math.floor(Math.random() * 10);
     
-    return { number: cardNumber, month, year, shortYear: year.toString().substring(2), cvv, isAmex };
+    return { number: cardNumber, month, year: displayYear, shortYear: displayYear.toString().substring(2), cvv, isAmex };
 }
 
 function formatCardNumber(number) {
@@ -347,16 +2126,49 @@ function formatCardNumber(number) {
     return number.replace(/(\d{4})/g, '$1 ').trim();
 }
 
+function formatCardForExport(card, format) {
+    switch(format) {
+        case 'simple': return `${card.number}|${card.month}|${card.year}|${card.cvv}`;
+        case 'detailed': return `◈ CARTÃO: ${card.number}|${card.month}|${card.year}|${card.cvv}`;
+        case 'both': return `◈ CARTÃO: ${card.number}|${card.month}|${card.year}|${card.cvv}\n${card.number}|${card.month}|${card.year}|${card.cvv}`;
+        default: return `${card.number}|${card.month}|${card.year}|${card.cvv}`;
+    }
+}
+
+async function consultarBIN(binNum) {
+    try {
+        const response = await fetch('https://app.fluidpay.com/api/lookup/bin/pub_2HT17PrC7sOCvNp1qwb9XBhb1RO', {
+            method: 'POST',
+            headers: { 'Authorization': 'pub_2HT17PrC7sOCvNp1qwb9XBhb1RO', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'tokenizer', type_id: '230685b9-61e6-4dc4-8cb2-18ef6fd93146', bin: binNum })
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            return {
+                success: true,
+                bank: data.data.issuing_bank || 'Desconhecido',
+                brand: data.data.card_brand || 'Desconhecido',
+                level: data.data.card_level_generic || 'Desconhecido',
+                country: data.data.country || '',
+                type: data.data.card_type || 'CREDIT'
+            };
+        }
+        return { success: false };
+    } catch(e) {
+        return { success: false };
+    }
+}
+
 async function generateCards() {
     const inputData = document.getElementById('gen_bin').value.trim();
     if (!inputData) {
-        Swal.fire({ title: '⚠️ Digite uma BIN', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        Swal.fire({ title: '⚠️ Digite uma BIN', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
     
     const quantity = parseInt(document.getElementById('gen_qty').value) || 10;
     if (quantity < 1 || quantity > 100) {
-        Swal.fire({ title: '⚠️ Quantidade entre 1 e 100', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        Swal.fire({ title: '⚠️ Quantidade entre 1 e 100', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
     
@@ -372,55 +2184,90 @@ async function generateCards() {
     } else {
         bin = inputData;
     }
+    if (document.getElementById('gen_month').value) fixedMonth = document.getElementById('gen_month').value;
+    if (document.getElementById('gen_year').value) fixedYear = document.getElementById('gen_year').value;
     
     const cleanBin = bin.replace(/\D/g, '').substring(0, 6);
     if (cleanBin.length < 6) {
-        Swal.fire({ title: '⚠️ BIN deve ter 6 dígitos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        Swal.fire({ title: '⚠️ BIN deve ter 6 dígitos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
     
+    const result = await consultarBIN(cleanBin);
+    if (result.success) {
+        binData = result;
+        document.getElementById('bin_bank').textContent = result.bank.toUpperCase();
+        document.getElementById('bin_brand').textContent = result.brand;
+        document.getElementById('bin_level').textContent = result.level.toUpperCase();
+        document.getElementById('bin_country').textContent = result.country;
+        document.getElementById('bin_type').textContent = result.type.toUpperCase();
+        document.getElementById('bin_status').textContent = '● ONLINE';
+        document.getElementById('bin_status').style.color = 'var(--success)';
+    } else {
+        binData = { bank: 'Desconhecido', brand: 'Desconhecido', level: 'Desconhecido', country: '', type: 'Desconhecido' };
+        document.getElementById('bin_bank').textContent = 'N/A';
+        document.getElementById('bin_brand').textContent = 'N/A';
+        document.getElementById('bin_level').textContent = 'N/A';
+        document.getElementById('bin_country').textContent = 'N/A';
+        document.getElementById('bin_type').textContent = 'N/A';
+        document.getElementById('bin_status').textContent = '● OFFLINE';
+        document.getElementById('bin_status').style.color = 'var(--gold)';
+    }
+    
     const container = document.getElementById('cards_container');
+    generatedCards = [];
     let html = '';
-    let generated = [];
+    const format = document.getElementById('gen_format').value;
     
     for (let i = 0; i < quantity; i++) {
         const card = generateCompleteCard(bin, fixedMonth, fixedYear);
-        generated.push(card);
+        generatedCards.push(card);
         html += `<div class="card-item">
             <span class="card-number">${formatCardNumber(card.number)}</span>
             <span class="card-details">${card.month}/${card.shortYear} CVV:${card.cvv}</span>
+            <div class="card-actions">
+                <button onclick="copyCard('${formatCardForExport(card, format).replace(/'/g, "\\'")}')" title="Copiar">📋</button>
+            </div>
         </div>`;
     }
     
     container.innerHTML = html;
-    document.getElementById('cards_count').textContent = generated.length;
-    window.generatedCards = generated;
+    document.getElementById('cards_count').textContent = generatedCards.length;
     
-    Swal.fire({ title: '✅ ' + generated.length + ' cartões gerados!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#111', color: '#fff' });
+    Swal.fire({ title: '✅ ' + generatedCards.length + ' cartões gerados!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
 
-function clearGenerator() {
-    document.getElementById('cards_container').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Nenhum cartão gerado</div>';
-    document.getElementById('cards_count').textContent = '0';
-    window.generatedCards = [];
+function copyCard(text) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    Swal.fire({ title: '✅ Copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
 
 function copyAllCards() {
-    if (!window.generatedCards || window.generatedCards.length === 0) {
-        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+    if (generatedCards.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
-    let text = window.generatedCards.map(c => `${c.number}|${c.month}|${c.year}|${c.cvv}`).join('\n');
+    const format = document.getElementById('gen_format').value;
+    let text = '';
+    generatedCards.forEach((card, i) => {
+        text += formatCardForExport(card, format);
+        if (i < generatedCards.length - 1) text += '\n';
+    });
     navigator.clipboard.writeText(text).catch(() => {});
-    Swal.fire({ title: '✅ Copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+    Swal.fire({ title: '✅ ' + generatedCards.length + ' cartões copiados!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
 
 function downloadCards() {
-    if (!window.generatedCards || window.generatedCards.length === 0) {
-        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+    if (generatedCards.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
-    let text = window.generatedCards.map(c => `${c.number}|${c.month}|${c.year}|${c.cvv}`).join('\n');
+    const format = document.getElementById('gen_format').value;
+    let text = '';
+    generatedCards.forEach((card, i) => {
+        text += formatCardForExport(card, format);
+        if (i < generatedCards.length - 1) text += '\n';
+    });
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -430,15 +2277,255 @@ function downloadCards() {
     URL.revokeObjectURL(url);
 }
 
+function clearGenerator() {
+    generatedCards = [];
+    document.getElementById('cards_container').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Nenhum cartão gerado</div>';
+    document.getElementById('cards_count').textContent = '0';
+}
+
+// ===================== ADMIN =====================
+async function adminGerarCodigo() {
+    const creditos = parseInt(document.getElementById('admin_codigo_creditos').value) || 50;
+    const prefix = document.getElementById('admin_codigo_prefix').value.trim().toUpperCase() || 'ZTS';
+    
+    const result = await apiRequest('/api/gerarcodigo', { adminUser: currentUser.id, creditos, prefix });
+    if (result.success) {
+        const list = document.getElementById('admin_codigos_list');
+        list.innerHTML += `<div style="color:var(--gold);font-size:10px;padding:2px 0;">${result.codigo} - ${result.creditos} créditos</div>`;
+        document.getElementById('admin_codigo_creditos').value = '';
+        Swal.fire({ title: '✅ Código gerado!', text: result.codigo + ' (' + result.creditos + ' créditos)', icon: 'success', toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    } else {
+        Swal.fire({ title: '❌ Erro', text: result.error || 'Apenas administradores', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
+}
+
+async function adminSetMultiplier(valor) {
+    const result = await apiRequest('/api/multiplier', { adminUser: currentUser.id, value: valor });
+    if (result.success) {
+        document.querySelectorAll('#mult_off, #mult_dobro, #mult_triplo').forEach(b => b.style.borderColor = 'var(--border)');
+        if (valor === 1) document.getElementById('mult_off').style.borderColor = 'var(--gold)';
+        else if (valor === 2) document.getElementById('mult_dobro').style.borderColor = 'var(--gold)';
+        else if (valor === 3) document.getElementById('mult_triplo').style.borderColor = 'var(--gold)';
+        
+        const display = document.getElementById('multiplier_status_display');
+        if (valor === 1) display.innerHTML = '<span style="font-size:9px;color:var(--text-dim);">Multiplicador desativado</span>';
+        else if (valor === 2) display.innerHTML = '<span class="multiplier-status dobro">◈ DOBRO (2x)</span>';
+        else if (valor === 3) display.innerHTML = '<span class="multiplier-status triplo">◈ TRIPLO (3x)</span>';
+        
+        Swal.fire({ title: '✅ Multiplicador alterado!', text: valor + 'x ativo', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
+}
+
+async function adminAtualizarLista() {
+    const result = await apiGet(`/api/users/${currentUser.id}`);
+    if (result.success) {
+        const list = document.getElementById('admin_user_list');
+        let html = '';
+        result.users.forEach(u => {
+            const roleClass = u.role === 'master' ? 'master' : (u.role === 'admin' ? 'admin' : (u.role === 'afiliado' ? 'afiliado' : ''));
+            html += `
+                <div class="user-list-item">
+                    <span class="user-name">${u.id}</span>
+                    <span class="user-role ${roleClass}">${u.role.toUpperCase()}</span>
+                    <span style="font-size:8px;color:var(--text-dim);">💰 ${u.creditos}</span>
+                    <div class="user-actions">
+                        ${u.role !== 'master' ? `<button class="btn-xs gold" onclick="adminPromover('${u.id}')">⭐</button>` : ''}
+                        ${u.role !== 'master' ? `<button class="btn-xs danger" onclick="adminDeletar('${u.id}')">🗑</button>` : ''}
+                        <button class="btn-xs success" onclick="adminAddCredits('${u.id}')">💰</button>
+                    </div>
+                </div>
+            `;
+        });
+        list.innerHTML = html;
+    }
+}
+
+async function adminPromover(targetUser) {
+    const result = await apiRequest('/api/promote', { adminUser: currentUser.id, targetUser });
+    if (result.success) {
+        adminAtualizarLista();
+        Swal.fire({ title: '✅ Promovido!', text: targetUser + ' agora é ' + result.newRole, icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
+}
+
+async function adminDeletar(targetUser) {
+    if (targetUser === currentUser.id) {
+        Swal.fire({ title: '❌ Não pode remover a si mesmo', icon: 'error', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        return;
+    }
+    Swal.fire({
+        title: '⚠️ Confirmar exclusão',
+        text: 'Remover ' + targetUser + '?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'SIM',
+        cancelButtonText: 'NÃO',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const response = await apiRequest('/api/deleteuser', { adminUser: currentUser.id, targetUser });
+            if (response.success) {
+                adminAtualizarLista();
+                Swal.fire({ title: '✅ Removido!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            }
+        }
+    });
+}
+
+async function adminAddCredits(targetUser) {
+    Swal.fire({
+        title: 'Adicionar créditos',
+        input: 'number',
+        inputLabel: 'Quantos?',
+        inputValue: 100,
+        showCancelButton: true,
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
+        if (result.isConfirmed && result.value) {
+            const response = await apiRequest('/api/addcredits', { user: targetUser, credits: parseInt(result.value) });
+            if (response.success) {
+                if (targetUser === currentUser.id) {
+                    currentUser.creditos = response.creditos;
+                    document.getElementById('p_creditos').textContent = response.creditos;
+                }
+                adminAtualizarLista();
+                Swal.fire({ title: '✅ Adicionado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            }
+        }
+    });
+}
+
+function adminCriarUsuario() {
+    Swal.fire({
+        title: 'Criar usuário',
+        html: `
+            <input id="swal_user" placeholder="Usuário" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;">
+            <input id="swal_pass" placeholder="Senha" type="password" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;">
+            <select id="swal_role" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;">
+                <option value="user">User</option>
+                <option value="afiliado">Afiliado</option>
+                <option value="admin">Admin</option>
+            </select>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'CRIAR',
+        background: '#141414',
+        color: '#e8e8e8',
+        preConfirm: () => {
+            const user = document.getElementById('swal_user').value.trim();
+            const pass = document.getElementById('swal_pass').value;
+            const role = document.getElementById('swal_role').value;
+            if (!user || !pass) { Swal.showValidationMessage('Preencha todos os campos'); return; }
+            return { user, pass, role };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { user, pass, role } = result.value;
+            const response = await apiRequest('/api/register', { user, pass, ref: '' });
+            if (response.success) {
+                const userObj = mockData.users.find(u => u.id === user);
+                if (userObj) userObj.role = role;
+                adminAtualizarLista();
+                Swal.fire({ title: '✅ Criado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            }
+        }
+    });
+}
+
+function adminUploadAudio() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = function() {
+        if (!this.files || !this.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            mockData.audioFile = e.target.result;
+            mockData.audioFileName = this.files[0].name;
+            document.getElementById('audio_status').innerHTML = '✅ Áudio carregado: <span style="color:var(--gold);font-weight:bold;">' + this.files[0].name + '</span>';
+            Swal.fire({ title: '✅ Áudio carregado!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        }.bind(this);
+        reader.readAsDataURL(this.files[0]);
+    };
+    input.click();
+}
+
+function adminTestAudio() { playSomAprovado(); }
+
+function adminRemoveAudio() {
+    mockData.audioFile = null;
+    mockData.audioFileName = null;
+    document.getElementById('audio_status').innerHTML = 'Nenhum áudio carregado';
+    Swal.fire({ title: '🗑 Áudio removido', icon: 'info', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+}
+
+function adminClearAll() {
+    Swal.fire({
+        title: '⚠️ PERIGO!',
+        text: 'Limpar TODOS os dados?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'SIM',
+        cancelButtonText: 'NÃO',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const response = await apiRequest('/api/reset', { adminUser: currentUser.id });
+            if (response.success) {
+                Swal.fire({ title: '✅ Sistema limpo!', icon: 'success', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+                setTimeout(() => location.reload(), 1500);
+            }
+        }
+    });
+}
+
+function adminResetSystem() {
+    Swal.fire({
+        title: '🔄 Reiniciar sistema?',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'REINICIAR',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(result => {
+        if (result.isConfirmed) location.reload();
+    });
+}
+
+// ===================== ÁUDIO =====================
+function playSomAprovado() {
+    if (mockData.audioFile) {
+        const audio = document.getElementById('som_aprovado');
+        audio.src = mockData.audioFile;
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+    } else {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 800;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.3);
+        } catch(e) {}
+    }
+}
+
 // ===================== INICIALIZAÇÃO =====================
 
-console.log('🚀 Iniciando Sistema ZTS...');
-console.log('🌐 Servidor:', SERVER_URL);
-
-// Conectar ao servidor automaticamente
+console.log('🚀 Sistema ZTS - Mahoraga Dharma Wheel');
 conectarServidor();
 
-// Verificar se já tem usuário logado
+document.getElementById('codigos_resgatados').textContent = '0';
+
 const savedUser = localStorage.getItem('zts_user');
 if (savedUser) {
     try {
@@ -449,8 +2536,7 @@ if (savedUser) {
     } catch(e) {}
 }
 
-console.log('◈ Sistema ZTS - Mahoraga Dharma Wheel carregado!');
-console.log('📡 Conectado ao servidor:', SERVER_URL);
+console.log('◈ Sistema pronto!');
 </script>
 </body>
 </html>

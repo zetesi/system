@@ -1,0 +1,58 @@
+{
+  "users": [
+    {
+      "id": "admin",
+      "password": "admin123",
+      "role": "master",
+      "creditos": 10983,
+      "comissao": 0,
+      "ref": "",
+      "logged": true
+    },
+    {
+      "id": "zts",
+      "password": "zts123",
+      "role": "admin",
+      "creditos": 5000,
+      "comissao": 0,
+      "ref": "",
+      "logged": false
+    },
+    {
+      "id": "teste",
+      "password": "teste123",
+      "role": "user",
+      "creditos": 100,
+      "comissao": 0,
+      "ref": "",
+      "logged": false
+    }
+  ],
+  "messages": [
+    {
+      "user": "SISTEMA",
+      "text": "◈ Sistema ZTS online! Bem-vindo!",
+      "time": 1784259462845,
+      "role": "master",
+      "tipo": "texto"
+    },
+    {
+      "user": "admin",
+      "text": "Oi nigerts",
+      "role": "master",
+      "tipo": "texto",
+      "time": 1784262018329,
+      "id": "mrofjcih"
+    }
+  ],
+  "indicacoes": [],
+  "codigos": [],
+  "codigosUsados": [],
+  "audioFile": null,
+  "audioFileName": null,
+  "multiplier": 1,
+  "recargas": [],
+  "usuariosOnline": {
+    "admin": 1784262227356
+  }
+}

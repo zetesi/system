@@ -14,9 +14,18 @@ const io = socketIo(server, {
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static('public'));
+app.use(express.urlencoded({ extended: true }));
 
-// Arquivo de dados
+// Servir arquivos estáticos da pasta public
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ROTA RAIZ - OBRIGATÓRIA!
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ===================== BANCO DE DADOS =====================
+
 const DATA_FILE = path.join(__dirname, 'data', 'database.json');
 
 // Garantir que a pasta data existe
@@ -24,7 +33,6 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
     fs.mkdirSync(path.join(__dirname, 'data'));
 }
 
-// Funções de banco de dados
 function loadData() {
     try {
         if (fs.existsSync(DATA_FILE)) {
@@ -45,7 +53,7 @@ function getDefaultData() {
             { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '', logged: false }
         ],
         messages: [
-            { user: 'ADMIN', text: 'Bem-vindo ao Sistema ZTS! ◈', time: Date.now(), role: 'master', tipo: 'texto' }
+            { user: 'SISTEMA', text: '◈ Sistema ZTS online! Bem-vindo!', time: Date.now(), role: 'master', tipo: 'texto' }
         ],
         indicacoes: [],
         codigos: [],
@@ -68,10 +76,10 @@ function saveData(data) {
     }
 }
 
-// Carregar dados iniciais
+// Carregar dados
 let db = loadData();
 
-// ===================== API REST =====================
+// ===================== API ROTAS =====================
 
 // Login
 app.post('/api/login', (req, res) => {
@@ -131,7 +139,7 @@ app.post('/api/register', (req, res) => {
     }
     
     saveData(db);
-    res.json({ success: true, message: 'Cadastro realizado com sucesso!' });
+    res.json({ success: true, message: 'Cadastro realizado!' });
 });
 
 // Logout
@@ -146,25 +154,6 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Obter dados do usuário
-app.get('/api/user/:id', (req, res) => {
-    const user = db.users.find(u => u.id === req.params.id);
-    if (user) {
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                role: user.role,
-                creditos: user.creditos,
-                comissao: user.comissao,
-                ref: user.ref
-            }
-        });
-    } else {
-        res.json({ success: false, error: 'Usuário não encontrado' });
-    }
-});
-
 // Adicionar créditos
 app.post('/api/addcredits', (req, res) => {
     const { user, credits } = req.body;
@@ -176,12 +165,6 @@ app.post('/api/addcredits', (req, res) => {
     } else {
         res.json({ success: false, error: 'Usuário não encontrado' });
     }
-});
-
-// Obter indicações
-app.get('/api/indicacoes/:user', (req, res) => {
-    const indicacoes = db.indicacoes.filter(i => i.afiliado === req.params.user);
-    res.json({ success: true, indicacoes });
 });
 
 // Resgatar código
@@ -216,7 +199,7 @@ app.post('/api/gerarcodigo', (req, res) => {
     const admin = db.users.find(u => u.id === adminUser);
     
     if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Apenas administradores podem gerar códigos' });
+        res.json({ success: false, error: 'Apenas administradores' });
         return;
     }
     
@@ -224,46 +207,6 @@ app.post('/api/gerarcodigo', (req, res) => {
     db.codigos.push({ codigo, creditos: creditos || 50, criado: Date.now() });
     saveData(db);
     res.json({ success: true, codigo, creditos: creditos || 50 });
-});
-
-// Definir multiplicador (admin)
-app.post('/api/multiplier', (req, res) => {
-    const { adminUser, value } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Apenas administradores podem alterar o multiplicador' });
-        return;
-    }
-    
-    db.multiplier = value;
-    saveData(db);
-    res.json({ success: true, multiplier: value });
-});
-
-// Upload de áudio (admin)
-app.post('/api/audio', (req, res) => {
-    const { adminUser, audioData, fileName } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Apenas administradores' });
-        return;
-    }
-    
-    db.audioFile = audioData;
-    db.audioFileName = fileName;
-    saveData(db);
-    res.json({ success: true });
-});
-
-// Obter áudio
-app.get('/api/audio', (req, res) => {
-    res.json({ 
-        success: true, 
-        audioFile: db.audioFile, 
-        audioFileName: db.audioFileName 
-    });
 });
 
 // Listar usuários (admin)
@@ -296,7 +239,7 @@ app.post('/api/promote', (req, res) => {
     
     const target = db.users.find(u => u.id === targetUser);
     if (!target || target.role === 'master') {
-        res.json({ success: false, error: 'Não é possível promover este usuário' });
+        res.json({ success: false, error: 'Não é possível promover' });
         return;
     }
     
@@ -331,13 +274,47 @@ app.post('/api/deleteuser', (req, res) => {
     res.json({ success: true });
 });
 
+// Definir multiplicador (admin)
+app.post('/api/multiplier', (req, res) => {
+    const { adminUser, value } = req.body;
+    const admin = db.users.find(u => u.id === adminUser);
+    
+    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
+        res.json({ success: false, error: 'Apenas administradores' });
+        return;
+    }
+    
+    db.multiplier = value;
+    saveData(db);
+    res.json({ success: true, multiplier: value });
+});
+
+// Obter dados do usuário
+app.get('/api/user/:id', (req, res) => {
+    const user = db.users.find(u => u.id === req.params.id);
+    if (user) {
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                role: user.role,
+                creditos: user.creditos,
+                comissao: user.comissao,
+                ref: user.ref
+            }
+        });
+    } else {
+        res.json({ success: false, error: 'Usuário não encontrado' });
+    }
+});
+
 // Resetar sistema (admin)
 app.post('/api/reset', (req, res) => {
     const { adminUser } = req.body;
     const admin = db.users.find(u => u.id === adminUser);
     
     if (!admin || admin.role !== 'master') {
-        res.json({ success: false, error: 'Apenas MASTER pode resetar o sistema' });
+        res.json({ success: false, error: 'Apenas MASTER' });
         return;
     }
     
@@ -350,19 +327,19 @@ app.post('/api/reset', (req, res) => {
     res.json({ success: true });
 });
 
-// ===================== SOCKET.IO (Chat em Tempo Real) =====================
+// ===================== SOCKET.IO (CHAT) =====================
 
 io.on('connection', (socket) => {
     console.log('🔗 Usuário conectado:', socket.id);
     
-    // Enviar histórico de mensagens
+    // Enviar histórico
     socket.emit('historico', db.messages);
     
     // Enviar usuários online
     const onlineUsers = Object.keys(db.usuariosOnline);
     io.emit('usuarios_online', onlineUsers);
     
-    // Receber nova mensagem
+    // Receber mensagem
     socket.on('nova_mensagem', (data) => {
         const msg = {
             ...data,
@@ -371,25 +348,16 @@ io.on('connection', (socket) => {
         };
         
         db.messages.push(msg);
-        // Manter apenas últimas 200 mensagens
         if (db.messages.length > 200) {
             db.messages = db.messages.slice(-200);
         }
         saveData(db);
         
-        // Enviar para todos os conectados
         io.emit('mensagem_recebida', msg);
     });
     
-    // Atualizar status de digitação
-    socket.on('digitando', (data) => {
-        socket.broadcast.emit('usuario_digitando', data);
-    });
-    
-    // Desconexão
     socket.on('disconnect', () => {
         console.log('🔌 Usuário desconectado:', socket.id);
-        // Remover dos online
         for (const [user, time] of Object.entries(db.usuariosOnline)) {
             if (Date.now() - time > 60000) {
                 const userObj = db.users.find(u => u.id === user);
@@ -411,10 +379,9 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('◈ SISTEMA ZTS - MAHORAGA DHARMA WHEEL ◈');
     console.log('═══════════════════════════════════════════');
     console.log(`📱 Servidor rodando na porta: ${PORT}`);
-    console.log(`🌐 Acesse: https://${process.env.PROJECT_DOMAIN}.glitch.me`);
+    console.log(`🌐 Acesse: http://localhost:${PORT}`);
     console.log('═══════════════════════════════════════════');
     console.log('👥 Usuários:', db.users.length);
     console.log('💬 Mensagens:', db.messages.length);
-    console.log('📦 Dados salvos em: data/database.json');
     console.log('═══════════════════════════════════════════');
 });
