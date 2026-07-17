@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>◈ ZTS SYSTEM :: Mahoraga</title>
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+/* ===== TODO O CSS DA VERSÃO ANTERIOR ===== */
+/* Incluir todo o CSS do tema Mahoraga */
+:root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --border: #222222;
+    --text: #e0e0e0;
+    --text-dim: #666666;
+    --gold: #c9a84c;
+    --gold-dim: rgba(201,168,76,0.15);
+    --danger: #cc3333;
+    --success: #44aa77;
+    --purple: #8866bb;
+    --pink: #bb4488;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+    height:100%;
+    background: var(--bg);
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--text);
+}
+/* ... Restante do CSS ... */
+</style>
+</head>
+<body>
+<!-- ===== HTML COMPLETO ===== -->
+<!-- Incluir toda a estrutura HTML da versão anterior -->
+
+<script>
+// ===================== CONEXÃO COM O SERVIDOR =====================
+
+let socket = null;
+let currentUser = null;
+let isConnected = false;
+
+// CONFIGURAÇÃO AUTOMÁTICA PARA GLITCH
+const SERVER_URL = window.location.origin; // Pega a URL do Glitch automaticamente
+
+function conectarServidor() {
+    try {
+        socket = io(SERVER_URL, {
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000
+        });
+        
+        socket.on('connect', () => {
+            isConnected = true;
+            console.log('✅ Conectado ao servidor!');
+            document.getElementById('online_count').textContent = '● ONLINE';
+            document.getElementById('online_count').style.color = 'var(--success)';
+        });
+        
+        socket.on('disconnect', () => {
+            isConnected = false;
+            console.log('❌ Desconectado do servidor');
+            document.getElementById('online_count').textContent = '● OFFLINE';
+            document.getElementById('online_count').style.color = 'var(--danger)';
+        });
+        
+        socket.on('historico', (msgs) => {
+            if (msgs && msgs.length > 0) {
+                mockData.messages = msgs;
+                atualizarChat();
+            }
+        });
+        
+        socket.on('mensagem_recebida', (msg) => {
+            mockData.messages.push(msg);
+            atualizarChat();
+        });
+        
+        socket.on('usuarios_online', (users) => {
+            document.getElementById('online_count').textContent = users.length + ' online';
+            document.getElementById('online_count').style.color = 'var(--text)';
+        });
+        
+    } catch(e) {
+        console.error('Erro ao conectar:', e);
+    }
+}
+
+// ===================== FUNÇÕES DE API =====================
+
+async function apiRequest(endpoint, data) {
+    try {
+        const response = await fetch(SERVER_URL + endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+async function apiGet(endpoint) {
+    try {
+        const response = await fetch(SERVER_URL + endpoint);
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+// ===== DADOS MOCK (para fallback) =====
+let mockData = {
+    users: [],
+    messages: [],
+    indicacoes: [],
+    codigos: [],
+    codigosUsados: [],
+    audioFile: null,
+    audioFileName: null,
+    multiplier: 1,
+    recargas: []
+};
+
+// ===== FUNÇÕES DO SISTEMA =====
+// ... Incluir todas as funções da versão anterior aqui ...
+// (Login, Cadastro, Chat, Recarga, Afiliado, Admin, etc.)
+
+// ===== INICIALIZAÇÃO =====
+conectarServidor();
+
+// Verificar se já tem usuário logado
+const savedUser = localStorage.getItem('zts_user');
+if (savedUser) {
+    try {
+        const user = JSON.parse(savedUser);
+        currentUser = user;
+        document.getElementById('user_display').textContent = '◈ ' + user.id;
+        entrarPainel();
+    } catch(e) {}
+}
+
+console.log('◈ Sistema ZTS - Mahoraga Dharma Wheel carregado!');
+console.log('📡 Conectado ao servidor:', SERVER_URL);
+</script>
+</body>
+</html>
