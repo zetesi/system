@@ -8,8 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
-/* ===== TODO O CSS DA VERSÃO ANTERIOR ===== */
-/* Incluir todo o CSS do tema Mahoraga */
+/* ===== TODO O CSS AQUI ===== */
 :root {
     --bg: #0a0a0a;
     --panel: #111111;
@@ -17,11 +16,9 @@
     --text: #e0e0e0;
     --text-dim: #666666;
     --gold: #c9a84c;
-    --gold-dim: rgba(201,168,76,0.15);
     --danger: #cc3333;
     --success: #44aa77;
     --purple: #8866bb;
-    --pink: #bb4488;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body {
@@ -30,29 +27,33 @@ html, body {
     font-family: 'Share Tech Mono', monospace;
     color: var(--text);
 }
-/* ... Restante do CSS ... */
+/* ... (coloque todo o CSS da versão anterior aqui) ... */
 </style>
 </head>
 <body>
-<!-- ===== HTML COMPLETO ===== -->
-<!-- Incluir toda a estrutura HTML da versão anterior -->
+<!-- ===== TODO O HTML AQUI ===== -->
+<!-- (coloque todo o HTML da versão anterior aqui) -->
 
 <script>
-// ===================== CONEXÃO COM O SERVIDOR =====================
+// ===================== CONFIGURAÇÃO =====================
+// ⚠️ IMPORTANTE: Detecta a URL automaticamente!
+const SERVER_URL = window.location.origin;
 
 let socket = null;
 let currentUser = null;
 let isConnected = false;
 
-// CONFIGURAÇÃO AUTOMÁTICA PARA GLITCH
-const SERVER_URL = window.location.origin; // Pega a URL do Glitch automaticamente
+// ===================== CONEXÃO COM O SERVIDOR =====================
 
 function conectarServidor() {
     try {
+        console.log('🔄 Conectando ao servidor:', SERVER_URL);
+        
         socket = io(SERVER_URL, {
             reconnection: true,
             reconnectionAttempts: 10,
-            reconnectionDelay: 1000
+            reconnectionDelay: 1000,
+            timeout: 10000
         });
         
         socket.on('connect', () => {
@@ -70,6 +71,7 @@ function conectarServidor() {
         });
         
         socket.on('historico', (msgs) => {
+            console.log('📜 Histórico recebido:', msgs.length);
             if (msgs && msgs.length > 0) {
                 mockData.messages = msgs;
                 atualizarChat();
@@ -77,6 +79,7 @@ function conectarServidor() {
         });
         
         socket.on('mensagem_recebida', (msg) => {
+            console.log('💬 Nova mensagem de:', msg.user);
             mockData.messages.push(msg);
             atualizarChat();
         });
@@ -86,8 +89,16 @@ function conectarServidor() {
             document.getElementById('online_count').style.color = 'var(--text)';
         });
         
+        socket.on('connect_error', (error) => {
+            console.error('❌ Erro de conexão:', error);
+            document.getElementById('online_count').textContent = '⚠️ ERRO';
+            document.getElementById('online_count').style.color = 'var(--danger)';
+        });
+        
     } catch(e) {
-        console.error('Erro ao conectar:', e);
+        console.error('❌ Erro ao conectar:', e);
+        document.getElementById('online_count').textContent = '⚠️ ERRO';
+        document.getElementById('online_count').style.color = 'var(--danger)';
     }
 }
 
@@ -95,29 +106,39 @@ function conectarServidor() {
 
 async function apiRequest(endpoint, data) {
     try {
-        const response = await fetch(SERVER_URL + endpoint, {
+        const url = SERVER_URL + endpoint;
+        console.log('📡 Requisição:', url, data);
+        
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        return await response.json();
+        const result = await response.json();
+        console.log('📡 Resposta:', result);
+        return result;
     } catch(e) {
-        console.error('Erro na API:', e);
-        return { success: false, error: 'Erro de conexão' };
+        console.error('❌ Erro na API:', e);
+        return { success: false, error: 'Erro de conexão: ' + e.message };
     }
 }
 
 async function apiGet(endpoint) {
     try {
-        const response = await fetch(SERVER_URL + endpoint);
-        return await response.json();
+        const url = SERVER_URL + endpoint;
+        console.log('📡 GET:', url);
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        console.log('📡 Resposta:', result);
+        return result;
     } catch(e) {
-        console.error('Erro na API:', e);
+        console.error('❌ Erro na API:', e);
         return { success: false, error: 'Erro de conexão' };
     }
 }
 
-// ===== DADOS MOCK (para fallback) =====
+// ===================== DADOS MOCK =====================
 let mockData = {
     users: [],
     messages: [],
@@ -130,11 +151,291 @@ let mockData = {
     recargas: []
 };
 
-// ===== FUNÇÕES DO SISTEMA =====
-// ... Incluir todas as funções da versão anterior aqui ...
-// (Login, Cadastro, Chat, Recarga, Afiliado, Admin, etc.)
+// ===================== LOGIN =====================
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const user = document.getElementById('login_user').value.trim();
+    const pass = document.getElementById('login_pass').value.trim();
+    
+    if (!user || !pass) {
+        Swal.fire({ title: 'Preencha todos os campos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    
+    console.log('🔑 Tentando login:', user);
+    
+    const result = await apiRequest('/api/login', { user, pass });
+    
+    if (result.success) {
+        currentUser = result.user;
+        document.getElementById('user_display').textContent = '◈ ' + user;
+        entrarPainel();
+        
+        // Conectar ao socket se não estiver conectado
+        if (!socket || !socket.connected) {
+            conectarServidor();
+        }
+    } else {
+        Swal.fire({ title: '❌ Acesso negado', text: result.error || 'Usuário ou senha inválidos', icon: 'error', toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, background: '#111', color: '#fff' });
+    }
+});
 
-// ===== INICIALIZAÇÃO =====
+// ===================== FUNÇÕES DO SISTEMA =====================
+
+function entrarPainel() {
+    showSection('painel');
+    document.getElementById('p_user').textContent = currentUser.id;
+    document.getElementById('p_creditos').textContent = currentUser.creditos;
+    document.getElementById('p_comissao').textContent = currentUser.comissao || 0;
+    
+    const badge = document.getElementById('p_badge');
+    if (currentUser.role === 'master') { badge.textContent = 'MASTER'; badge.className = 'badge master'; }
+    else if (currentUser.role === 'admin') { badge.textContent = 'ADMIN'; badge.className = 'badge admin'; }
+    else if (currentUser.role === 'afiliado') { badge.textContent = 'AFILIADO'; badge.className = 'badge afiliado'; }
+    else { badge.textContent = 'USER'; badge.className = 'badge user'; }
+    
+    document.getElementById('btn_admin').style.display = (currentUser.role === 'admin' || currentUser.role === 'master') ? 'block' : 'none';
+    
+    if (currentUser.role === 'afiliado' || (currentUser.comissao && currentUser.comissao > 0)) {
+        document.getElementById('p_afiliado_info').style.display = 'block';
+    } else {
+        document.getElementById('p_afiliado_info').style.display = 'none';
+    }
+    
+    document.getElementById('link-afiliado').textContent = window.location.origin + '/?ref=' + currentUser.id;
+    
+    atualizarAfiliado();
+    atualizarChat();
+}
+
+function showSection(id) {
+    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    
+    if (['gerador','afiliado','recarga','chat','codigos','admin'].includes(id)) {
+        document.getElementById('section-painel').classList.add('active');
+        document.querySelectorAll('#section-painel .section').forEach(el => el.classList.remove('active'));
+        const sub = document.getElementById('sub-' + id);
+        if (sub) sub.classList.add('active');
+        currentSection = id;
+        if (id === 'afiliado') atualizarAfiliado();
+        if (id === 'admin') adminAtualizarLista();
+        if (id === 'chat') atualizarChat();
+        return;
+    }
+    
+    const el = document.getElementById('section-' + id);
+    if (el) el.classList.add('active');
+    currentSection = id;
+}
+
+function atualizarChat() {
+    const container = document.getElementById('chat_messages');
+    const msgs = mockData.messages || [];
+    if (msgs.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.06);padding:20px 0;font-size:10px;">Nenhuma mensagem</div>';
+        return;
+    }
+    let html = '';
+    msgs.slice(-50).forEach(msg => {
+        const userClass = (msg.role === 'admin' || msg.role === 'master') ? 'admin-name' : '';
+        const time = new Date(msg.time).toLocaleTimeString();
+        html += `<div class="msg-chat"><span class="user ${userClass}">${msg.user}</span> ${msg.text} <span class="time">${time}</span></div>`;
+    });
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
+}
+
+function atualizarAfiliado() {
+    // Implementação simplificada
+}
+
+function adminAtualizarLista() {
+    // Implementação simplificada
+}
+
+function logout() {
+    if (currentUser) {
+        apiRequest('/api/logout', { user: currentUser.id });
+        if (socket) socket.disconnect();
+        currentUser = null;
+        document.getElementById('user_display').textContent = '';
+    }
+    showSection('login');
+    document.getElementById('login_user').value = '';
+    document.getElementById('login_pass').value = '';
+}
+
+function enviarMensagem() {
+    const input = document.getElementById('chat_input');
+    const text = input.value.trim();
+    if (!text || !currentUser || !socket || !socket.connected) {
+        if (!socket || !socket.connected) {
+            Swal.fire({ title: '⚠️ Servidor desconectado', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        }
+        return;
+    }
+    
+    const msg = {
+        user: currentUser.id,
+        text: text,
+        role: currentUser.role,
+        tipo: 'texto'
+    };
+    
+    socket.emit('nova_mensagem', msg);
+    input.value = '';
+}
+
+// ===================== GERADOR DE CARTÕES =====================
+
+function luhnCheck(cardNumber) {
+    const digits = cardNumber.split('').map(Number);
+    let sum = 0, isEven = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+        let digit = digits[i];
+        if (isEven) { digit *= 2; if (digit > 9) digit -= 9; }
+        sum += digit;
+        isEven = !isEven;
+    }
+    return sum % 10 === 0;
+}
+
+function generateValidCard(binStart) {
+    const processedBin = binStart.replace(/[xX]/g, () => Math.floor(Math.random() * 10));
+    const cardLength = (processedBin.startsWith('34') || processedBin.startsWith('37')) ? 15 : 16;
+    
+    while (true) {
+        let cardNumber = processedBin;
+        const missingDigits = cardLength - cardNumber.length;
+        for (let i = 0; i < missingDigits; i++) {
+            cardNumber += Math.floor(Math.random() * 10);
+        }
+        if (cardNumber.length === cardLength && luhnCheck(cardNumber)) {
+            return cardNumber;
+        }
+        if (cardNumber.length === cardLength) {
+            for (let lastDigit = 0; lastDigit < 10; lastDigit++) {
+                const testNumber = cardNumber.substring(0, cardLength - 1) + lastDigit;
+                if (luhnCheck(testNumber)) return testNumber;
+            }
+        }
+    }
+}
+
+function generateCompleteCard(binStart, fixedMonth = null, fixedYear = null) {
+    const cardNumber = generateValidCard(binStart);
+    let month, year;
+    
+    if (fixedMonth && fixedYear) {
+        month = fixedMonth;
+        year = fixedYear;
+    } else {
+        month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+        year = Math.floor(Math.random() * (2040 - 2025 + 1)) + 2025;
+    }
+    
+    const isAmex = binStart.startsWith('34') || binStart.startsWith('37');
+    const cvvLength = isAmex ? 4 : 3;
+    let cvv = '';
+    for (let i = 0; i < cvvLength; i++) cvv += Math.floor(Math.random() * 10);
+    
+    return { number: cardNumber, month, year, shortYear: year.toString().substring(2), cvv, isAmex };
+}
+
+function formatCardNumber(number) {
+    if (number.length === 15) return number.replace(/(\d{4})(\d{6})(\d{5})/, '$1 $2 $3');
+    return number.replace(/(\d{4})/g, '$1 ').trim();
+}
+
+async function generateCards() {
+    const inputData = document.getElementById('gen_bin').value.trim();
+    if (!inputData) {
+        Swal.fire({ title: '⚠️ Digite uma BIN', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    
+    const quantity = parseInt(document.getElementById('gen_qty').value) || 10;
+    if (quantity < 1 || quantity > 100) {
+        Swal.fire({ title: '⚠️ Quantidade entre 1 e 100', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    
+    let bin, fixedMonth = null, fixedYear = null;
+    if (inputData.includes('|')) {
+        const parts = inputData.split('|');
+        bin = parts[0].trim();
+        if (parts[1] && parts[1].trim()) fixedMonth = parts[1].trim().padStart(2, '0');
+        if (parts[2] && parts[2].trim()) {
+            let y = parts[2].trim();
+            fixedYear = y.length === 2 ? `20${y}` : y;
+        }
+    } else {
+        bin = inputData;
+    }
+    
+    const cleanBin = bin.replace(/\D/g, '').substring(0, 6);
+    if (cleanBin.length < 6) {
+        Swal.fire({ title: '⚠️ BIN deve ter 6 dígitos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    
+    const container = document.getElementById('cards_container');
+    let html = '';
+    let generated = [];
+    
+    for (let i = 0; i < quantity; i++) {
+        const card = generateCompleteCard(bin, fixedMonth, fixedYear);
+        generated.push(card);
+        html += `<div class="card-item">
+            <span class="card-number">${formatCardNumber(card.number)}</span>
+            <span class="card-details">${card.month}/${card.shortYear} CVV:${card.cvv}</span>
+        </div>`;
+    }
+    
+    container.innerHTML = html;
+    document.getElementById('cards_count').textContent = generated.length;
+    window.generatedCards = generated;
+    
+    Swal.fire({ title: '✅ ' + generated.length + ' cartões gerados!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#111', color: '#fff' });
+}
+
+function clearGenerator() {
+    document.getElementById('cards_container').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px 0;font-size:10px;">Nenhum cartão gerado</div>';
+    document.getElementById('cards_count').textContent = '0';
+    window.generatedCards = [];
+}
+
+function copyAllCards() {
+    if (!window.generatedCards || window.generatedCards.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    let text = window.generatedCards.map(c => `${c.number}|${c.month}|${c.year}|${c.cvv}`).join('\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+    Swal.fire({ title: '✅ Copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+}
+
+function downloadCards() {
+    if (!window.generatedCards || window.generatedCards.length === 0) {
+        Swal.fire({ title: '⚠️ Nenhum cartão', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#111', color: '#fff' });
+        return;
+    }
+    let text = window.generatedCards.map(c => `${c.number}|${c.month}|${c.year}|${c.cvv}`).join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cartoes_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ===================== INICIALIZAÇÃO =====================
+
+console.log('🚀 Iniciando Sistema ZTS...');
+console.log('🌐 Servidor:', SERVER_URL);
+
+// Conectar ao servidor automaticamente
 conectarServidor();
 
 // Verificar se já tem usuário logado
