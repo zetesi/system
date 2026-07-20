@@ -47,22 +47,10 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
     fs.mkdirSync(path.join(__dirname, 'data'));
 }
 
-function loadData() {
-    try {
-        if (fs.existsSync(DATA_FILE)) {
-            const raw = fs.readFileSync(DATA_FILE);
-            return JSON.parse(raw);
-        }
-    } catch (e) {
-        console.error('Erro ao carregar dados:', e);
-    }
-    return getDefaultData();
-}
-
 function getDefaultData() {
     return {
         users: [
-            { id: 'Zts', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
+            { id: 'admin', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
             { id: 'zts', password: 'zts123', role: 'admin', creditos: 5000, comissao: 0, ref: '', logged: false },
             { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '', logged: false }
         ],
@@ -76,8 +64,31 @@ function getDefaultData() {
         audioFileName: null,
         multiplier: 1,
         recargas: [],
-        pagamentosPendentes: {}
+        pagamentosPendentes: {},
+        usuariosOnline: {}
     };
+}
+
+function loadData() {
+    try {
+        if (fs.existsSync(DATA_FILE)) {
+            const raw = fs.readFileSync(DATA_FILE);
+            const parsed = JSON.parse(raw);
+            
+            // Garantir que todos os campos existem
+            if (!parsed.pagamentosPendentes) parsed.pagamentosPendentes = {};
+            if (!parsed.usuariosOnline) parsed.usuariosOnline = {};
+            if (!parsed.recargas) parsed.recargas = [];
+            if (!parsed.codigos) parsed.codigos = [];
+            if (!parsed.codigosUsados) parsed.codigosUsados = [];
+            if (!parsed.indicacoes) parsed.indicacoes = [];
+            
+            return parsed;
+        }
+    } catch (e) {
+        console.error('Erro ao carregar dados:', e);
+    }
+    return getDefaultData();
 }
 
 function saveData(data) {
@@ -160,29 +171,48 @@ app.post('/api/create-pix', async (req, res) => {
     }
 });
 
-// ===================== MERCADO PAGO - WEBHOOK =====================
+// ===================== MERCADO PAGO - WEBHOOK (CORRIGIDO) =====================
 
 app.post('/webhook', async (req, res) => {
     try {
         const rawBody = req.body;
+        
+        console.log('📨 Webhook recebido:', JSON.stringify(rawBody).substring(0, 500));
+        
+        // Verificar se o body existe
+        if (!rawBody || Object.keys(rawBody).length === 0) {
+            console.warn('⚠️ Body vazio recebido');
+            return res.status(200).send('OK');
+        }
+        
+        // Extrair dados do webhook
         const { type, data, id } = rawBody;
+        const paymentId = data?.id || id || rawBody.id;
         
-        console.log('📨 Webhook recebido:', type, id || data?.id);
+        console.log(`📊 Evento: ${type}, Payment ID: ${paymentId}`);
         
-        if (type === 'payment' || type === 'payment.created') {
-            const paymentId = data?.id || id;
+        // Verificar se é um evento de pagamento
+        if (type === 'payment' || type === 'payment.created' || rawBody.action === 'payment.created') {
             
             if (!paymentId) {
+                console.warn('⚠️ Payment ID não encontrado');
                 return res.status(200).send('OK');
+            }
+            
+            // Garantir que pagamentosPendentes existe
+            if (!db.pagamentosPendentes) {
+                db.pagamentosPendentes = {};
+                saveData(db);
             }
             
             const pending = db.pagamentosPendentes[paymentId];
             
             if (pending && pending.status === 'pending') {
                 try {
+                    console.log(`🔍 Consultando status do pagamento ${paymentId}...`);
                     const paymentData = await payment.get({ id: paymentId });
                     
-                    console.log('📊 Status do pagamento:', paymentData?.status);
+                    console.log(`📊 Status do pagamento: ${paymentData?.status}`);
                     
                     if (paymentData && paymentData.status === 'approved') {
                         const user = db.users.find(u => u.id === pending.user);
@@ -204,6 +234,7 @@ app.post('/webhook', async (req, res) => {
                             pending.status = 'approved';
                             saveData(db);
                             
+                            // Notificar via Socket.IO
                             io.emit('pagamento_confirmado', {
                                 user: pending.user,
                                 creditos: totalCredito,
@@ -216,17 +247,26 @@ app.post('/webhook', async (req, res) => {
                         pending.status = 'rejected';
                         saveData(db);
                         console.log(`❌ Pagamento ${paymentId} rejeitado`);
+                    } else if (paymentData && paymentData.status === 'pending') {
+                        console.log(`⏳ Pagamento ${paymentId} ainda pendente`);
+                    } else {
+                        console.log(`❓ Status desconhecido: ${paymentData?.status}`);
                     }
                 } catch (error) {
-                    console.error('Erro ao consultar pagamento:', error);
+                    console.error('❌ Erro ao consultar pagamento:', error.message);
                 }
+            } else {
+                console.log(`ℹ️ Pagamento ${paymentId} não encontrado ou já processado`);
             }
+        } else {
+            console.log(`📌 Evento ignorado: ${type}`);
         }
         
+        // Sempre responder 200 para o Mercado Pago não reenviar
         res.status(200).send('OK');
         
     } catch (error) {
-        console.error('❌ Erro no webhook:', error);
+        console.error('❌ Erro no webhook:', error.message);
         res.status(200).send('OK');
     }
 });
@@ -236,6 +276,12 @@ app.post('/webhook', async (req, res) => {
 app.get('/api/payment-status/:id', async (req, res) => {
     try {
         const paymentId = req.params.id;
+        
+        if (!db.pagamentosPendentes) {
+            db.pagamentosPendentes = {};
+            saveData(db);
+        }
+        
         const pending = db.pagamentosPendentes[paymentId];
         
         if (!pending) {
@@ -247,9 +293,8 @@ app.get('/api/payment-status/:id', async (req, res) => {
                 const paymentData = await payment.get({ id: paymentId });
                 if (paymentData && paymentData.status === 'approved') {
                     pending.status = 'approved';
-                    saveData(db);
                     
-                    // Adicionar créditos se ainda não foi feito
+                    // Adicionar créditos
                     const user = db.users.find(u => u.id === pending.user);
                     if (user) {
                         const multiplier = db.multiplier || 1;
@@ -272,9 +317,12 @@ app.get('/api/payment-status/:id', async (req, res) => {
                             payment_id: paymentId
                         });
                     }
+                } else if (paymentData && paymentData.status === 'rejected') {
+                    pending.status = 'rejected';
+                    saveData(db);
                 }
             } catch (e) {
-                console.error('Erro ao consultar status:', e);
+                console.error('Erro ao consultar status:', e.message);
             }
         }
         
