@@ -4,6 +4,11 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+require('dotenv').config();
 
 // SDK do Mercado Pago
 const { MercadoPagoConfig, Payment } = require('mercadopago');
@@ -11,6 +16,33 @@ const { MercadoPagoConfig, Payment } = require('mercadopago');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
+
+// ===================== SEGURANÇA =====================
+
+// Helmet para proteção de headers
+app.use(helmet());
+
+// Rate Limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 100, // 100 requisições por IP
+    message: { error: 'Muitas requisições, tente novamente mais tarde.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Limites específicos
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5, // 5 tentativas de login por 15 minutos
+    message: { error: 'Muitas tentativas de login, tente novamente em 15 minutos.' }
+});
+
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 3, // 3 cadastros por hora
+    message: { error: 'Limite de cadastros excedido.' }
+});
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -24,17 +56,15 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ===================== MERCADO PAGO - SUAS CREDENCIAIS =====================
+// ===================== MERCADO PAGO =====================
 
-const MP_ACCESS_TOKEN = 'APP_USR-5823435670170048-030708-318fc7a16e0012b0abac1ffca6045011-1907448126';
-const MP_PUBLIC_KEY = 'APP_USR-81d4c82a-9e37-4141-b926-c499b6a71c19';
-const MP_WEBHOOK_URL = 'https://dharmawhellchk.onrender.com/webhook';
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+const MP_PUBLIC_KEY = process.env.MP_PUBLIC_KEY;
+const MP_WEBHOOK_URL = process.env.MP_WEBHOOK_URL || 'https://dharmawhellchk.onrender.com/webhook';
+const JWT_SECRET = process.env.JWT_SECRET || 'zts_mahoraga_secret_key_2024_ultra_seguro';
+const SALT_ROUNDS = 10;
 
-// Inicializar cliente do Mercado Pago
-const client = new MercadoPagoConfig({
-    accessToken: MP_ACCESS_TOKEN
-});
-
+const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
 const payment = new Payment(client);
 
 console.log('💰 Mercado Pago configurado com sucesso!');
@@ -50,9 +80,9 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
 function getDefaultData() {
     return {
         users: [
-            { id: 'admin', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
-            { id: 'zts', password: 'zts123', role: 'admin', creditos: 5000, comissao: 0, ref: '', logged: false },
-            { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '', logged: false }
+            { id: 'admin', password: '$2b$10$SgxkBEMjZ9.bWjfY.Zd1a.mK3X3IhJfQaJqTQaJqTQaJqTQaJqTQ', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
+            { id: 'zts', password: '$2b$10$SgxkBEMjZ9.bWjfY.Zd1a.mK3X3IhJfQaJqTQaJqTQaJqTQaJqTQ', role: 'admin', creditos: 5000, comissao: 0, ref: '', logged: false },
+            { id: 'teste', password: '$2b$10$SgxkBEMjZ9.bWjfY.Zd1a.mK3X3IhJfQaJqTQaJqTQaJqTQaJqTQ', role: 'user', creditos: 100, comissao: 0, ref: '', logged: false }
         ],
         messages: [
             { user: 'SISTEMA', text: '◈ Sistema ZTS online!', time: Date.now(), role: 'master', tipo: 'texto' }
@@ -74,15 +104,12 @@ function loadData() {
         if (fs.existsSync(DATA_FILE)) {
             const raw = fs.readFileSync(DATA_FILE);
             const parsed = JSON.parse(raw);
-            
-            // Garantir que todos os campos existem
             if (!parsed.pagamentosPendentes) parsed.pagamentosPendentes = {};
             if (!parsed.usuariosOnline) parsed.usuariosOnline = {};
             if (!parsed.recargas) parsed.recargas = [];
             if (!parsed.codigos) parsed.codigos = [];
             if (!parsed.codigosUsados) parsed.codigosUsados = [];
             if (!parsed.indicacoes) parsed.indicacoes = [];
-            
             return parsed;
         }
     } catch (e) {
@@ -103,22 +130,193 @@ function saveData(data) {
 
 let db = loadData();
 
-// ===================== MERCADO PAGO - CRIAR PIX =====================
+// ===================== MIDDLEWARE DE AUTENTICAÇÃO =====================
 
-app.post('/api/create-pix', async (req, res) => {
+function authMiddleware(req, res, next) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'Token não fornecido' });
+    }
+    
     try {
-        const { user, valor, creditos } = req.body;
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = db.users.find(u => u.id === decoded.id);
+        if (!user) {
+            return res.status(401).json({ success: false, error: 'Usuário não encontrado' });
+        }
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(403).json({ success: false, error: 'Token inválido ou expirado' });
+    }
+}
+
+function adminMiddleware(req, res, next) {
+    if (req.user.role !== 'admin' && req.user.role !== 'master') {
+        return res.status(403).json({ success: false, error: 'Acesso negado. Necessário privilégios de administrador.' });
+    }
+    next();
+}
+
+function masterMiddleware(req, res, next) {
+    if (req.user.role !== 'master') {
+        return res.status(403).json({ success: false, error: 'Acesso negado. Necessário privilégios de master.' });
+    }
+    next();
+}
+
+// ===================== ROTAS PÚBLICAS =====================
+
+// Login - com rate limit
+app.post('/api/login', loginLimiter, async (req, res) => {
+    try {
+        const { user, pass } = req.body;
         
-        if (!user || !valor || !creditos) {
+        if (!user || !pass) {
+            return res.json({ success: false, error: 'Usuário e senha são obrigatórios' });
+        }
+        
+        const found = db.users.find(u => u.id === user);
+        if (!found) {
+            return res.json({ success: false, error: 'Usuário ou senha inválidos' });
+        }
+        
+        // Verificar senha com bcrypt
+        const validPassword = await bcrypt.compare(pass, found.password);
+        if (!validPassword) {
+            return res.json({ success: false, error: 'Usuário ou senha inválidos' });
+        }
+        
+        // Gerar token JWT
+        const token = jwt.sign(
+            { id: found.id, role: found.role },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        
+        found.logged = true;
+        db.usuariosOnline[user] = Date.now();
+        saveData(db);
+        
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: found.id,
+                role: found.role,
+                creditos: found.creditos,
+                comissao: found.comissao,
+                ref: found.ref
+            }
+        });
+    } catch (error) {
+        console.error('Erro no login:', error);
+        res.json({ success: false, error: 'Erro interno do servidor' });
+    }
+});
+
+// Cadastro - com rate limit
+app.post('/api/register', registerLimiter, async (req, res) => {
+    try {
+        const { user, pass, ref } = req.body;
+        
+        if (!user || !pass) {
+            return res.json({ success: false, error: 'Usuário e senha são obrigatórios' });
+        }
+        
+        if (user.length < 3) {
+            return res.json({ success: false, error: 'Usuário deve ter pelo menos 3 caracteres' });
+        }
+        
+        if (pass.length < 6) {
+            return res.json({ success: false, error: 'Senha deve ter pelo menos 6 caracteres' });
+        }
+        
+        // Sanitizar
+        const sanitizedUser = user.replace(/[<>]/g, '').trim();
+        
+        if (db.users.find(u => u.id === sanitizedUser)) {
+            return res.json({ success: false, error: 'Usuário já existe' });
+        }
+        
+        // Hash da senha
+        const hashedPassword = await bcrypt.hash(pass, SALT_ROUNDS);
+        
+        const novo = {
+            id: sanitizedUser,
+            password: hashedPassword,
+            role: 'user',
+            creditos: 0,
+            comissao: 0,
+            ref: ref || '',
+            logged: false
+        };
+        db.users.push(novo);
+        
+        if (ref) {
+            const afiliado = db.users.find(u => u.id === ref);
+            if (afiliado) {
+                db.indicacoes.push({
+                    afiliado: ref,
+                    indicado: sanitizedUser,
+                    data: new Date().toISOString(),
+                    status: 'pendente',
+                    bonus: 0
+                });
+            }
+        }
+        
+        saveData(db);
+        res.json({ success: true, message: 'Cadastro realizado!' });
+    } catch (error) {
+        console.error('Erro no cadastro:', error);
+        res.json({ success: false, error: 'Erro interno do servidor' });
+    }
+});
+
+// ===================== ROTAS PROTEGIDAS =====================
+
+// Logout
+app.post('/api/logout', authMiddleware, (req, res) => {
+    const found = db.users.find(u => u.id === req.user.id);
+    if (found) {
+        found.logged = false;
+        delete db.usuariosOnline[req.user.id];
+        saveData(db);
+    }
+    res.json({ success: true });
+});
+
+// Obter dados do usuário
+app.get('/api/user/:id', authMiddleware, (req, res) => {
+    const user = db.users.find(u => u.id === req.params.id);
+    if (!user) {
+        return res.json({ success: false, error: 'Usuário não encontrado' });
+    }
+    res.json({
+        success: true,
+        user: {
+            id: user.id,
+            role: user.role,
+            creditos: user.creditos,
+            comissao: user.comissao,
+            ref: user.ref
+        }
+    });
+});
+
+// ===================== MERCADO PAGO - ROTAS PROTEGIDAS =====================
+
+// Criar PIX
+app.post('/api/create-pix', authMiddleware, async (req, res) => {
+    try {
+        const { valor, creditos } = req.body;
+        const user = req.user.id;
+        
+        if (!valor || !creditos) {
             return res.json({ success: false, error: 'Dados incompletos' });
         }
         
-        const userData = db.users.find(u => u.id === user);
-        if (!userData) {
-            return res.json({ success: false, error: 'Usuário não encontrado' });
-        }
-        
-        // Criar pagamento PIX no Mercado Pago
         const request = {
             body: {
                 transaction_amount: parseFloat(valor),
@@ -132,8 +330,6 @@ app.post('/api/create-pix', async (req, res) => {
                 external_reference: `recarga_${user}_${Date.now()}`
             }
         };
-        
-        console.log('📡 Criando PIX para:', user, 'Valor:', valor);
         
         const response = await payment.create(request);
         
@@ -150,142 +346,33 @@ app.post('/api/create-pix', async (req, res) => {
         };
         saveData(db);
         
-        const qrCode = response.point_of_interaction?.transaction_data?.qr_code || '';
-        const qrCodeBase64 = response.point_of_interaction?.transaction_data?.qr_code_base64 || '';
-        const copyPaste = response.point_of_interaction?.transaction_data?.ticket_url || '';
-        
-        console.log('✅ PIX criado! ID:', response.id);
-        
-        return res.json({
+        res.json({
             success: true,
             payment_id: response.id,
-            qr_code: qrCode,
-            qr_code_base64: qrCodeBase64,
-            copy_paste: copyPaste,
+            qr_code: response.point_of_interaction?.transaction_data?.qr_code || '',
+            qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64 || '',
+            copy_paste: response.point_of_interaction?.transaction_data?.ticket_url || '',
             status: response.status
         });
-        
     } catch (error) {
-        console.error('❌ Erro ao criar PIX:', error);
-        return res.json({ success: false, error: error.message });
+        console.error('Erro ao criar PIX:', error);
+        res.json({ success: false, error: error.message });
     }
 });
 
-// ===================== MERCADO PAGO - WEBHOOK (CORRIGIDO) =====================
-
-app.post('/webhook', async (req, res) => {
-    try {
-        const rawBody = req.body;
-        
-        console.log('📨 Webhook recebido:', JSON.stringify(rawBody).substring(0, 500));
-        
-        // Verificar se o body existe
-        if (!rawBody || Object.keys(rawBody).length === 0) {
-            console.warn('⚠️ Body vazio recebido');
-            return res.status(200).send('OK');
-        }
-        
-        // Extrair dados do webhook
-        const { type, data, id } = rawBody;
-        const paymentId = data?.id || id || rawBody.id;
-        
-        console.log(`📊 Evento: ${type}, Payment ID: ${paymentId}`);
-        
-        // Verificar se é um evento de pagamento
-        if (type === 'payment' || type === 'payment.created' || rawBody.action === 'payment.created') {
-            
-            if (!paymentId) {
-                console.warn('⚠️ Payment ID não encontrado');
-                return res.status(200).send('OK');
-            }
-            
-            // Garantir que pagamentosPendentes existe
-            if (!db.pagamentosPendentes) {
-                db.pagamentosPendentes = {};
-                saveData(db);
-            }
-            
-            const pending = db.pagamentosPendentes[paymentId];
-            
-            if (pending && pending.status === 'pending') {
-                try {
-                    console.log(`🔍 Consultando status do pagamento ${paymentId}...`);
-                    const paymentData = await payment.get({ id: paymentId });
-                    
-                    console.log(`📊 Status do pagamento: ${paymentData?.status}`);
-                    
-                    if (paymentData && paymentData.status === 'approved') {
-                        const user = db.users.find(u => u.id === pending.user);
-                        if (user) {
-                            const multiplier = db.multiplier || 1;
-                            const totalCredito = pending.creditos * multiplier;
-                            
-                            user.creditos += totalCredito;
-                            
-                            db.recargas.push({
-                                user: pending.user,
-                                valor: pending.valor,
-                                creditos: totalCredito,
-                                data: new Date().toISOString(),
-                                payment_id: paymentId,
-                                status: 'approved'
-                            });
-                            
-                            pending.status = 'approved';
-                            saveData(db);
-                            
-                            // Notificar via Socket.IO
-                            io.emit('pagamento_confirmado', {
-                                user: pending.user,
-                                creditos: totalCredito,
-                                payment_id: paymentId
-                            });
-                            
-                            console.log(`✅ Pagamento ${paymentId} aprovado para ${pending.user}: +${totalCredito} créditos`);
-                        }
-                    } else if (paymentData && paymentData.status === 'rejected') {
-                        pending.status = 'rejected';
-                        saveData(db);
-                        console.log(`❌ Pagamento ${paymentId} rejeitado`);
-                    } else if (paymentData && paymentData.status === 'pending') {
-                        console.log(`⏳ Pagamento ${paymentId} ainda pendente`);
-                    } else {
-                        console.log(`❓ Status desconhecido: ${paymentData?.status}`);
-                    }
-                } catch (error) {
-                    console.error('❌ Erro ao consultar pagamento:', error.message);
-                }
-            } else {
-                console.log(`ℹ️ Pagamento ${paymentId} não encontrado ou já processado`);
-            }
-        } else {
-            console.log(`📌 Evento ignorado: ${type}`);
-        }
-        
-        // Sempre responder 200 para o Mercado Pago não reenviar
-        res.status(200).send('OK');
-        
-    } catch (error) {
-        console.error('❌ Erro no webhook:', error.message);
-        res.status(200).send('OK');
-    }
-});
-
-// ===================== CONSULTAR STATUS DO PAGAMENTO =====================
-
-app.get('/api/payment-status/:id', async (req, res) => {
+// Consultar status do pagamento
+app.get('/api/payment-status/:id', authMiddleware, async (req, res) => {
     try {
         const paymentId = req.params.id;
-        
-        if (!db.pagamentosPendentes) {
-            db.pagamentosPendentes = {};
-            saveData(db);
-        }
-        
         const pending = db.pagamentosPendentes[paymentId];
         
         if (!pending) {
             return res.json({ success: false, error: 'Pagamento não encontrado' });
+        }
+        
+        // Verificar se o pagamento pertence ao usuário
+        if (pending.user !== req.user.id) {
+            return res.json({ success: false, error: 'Pagamento não pertence a este usuário' });
         }
         
         if (pending.status === 'pending') {
@@ -293,14 +380,11 @@ app.get('/api/payment-status/:id', async (req, res) => {
                 const paymentData = await payment.get({ id: paymentId });
                 if (paymentData && paymentData.status === 'approved') {
                     pending.status = 'approved';
-                    
-                    // Adicionar créditos
                     const user = db.users.find(u => u.id === pending.user);
                     if (user) {
                         const multiplier = db.multiplier || 1;
                         const totalCredito = pending.creditos * multiplier;
                         user.creditos += totalCredito;
-                        
                         db.recargas.push({
                             user: pending.user,
                             valor: pending.valor,
@@ -310,7 +394,6 @@ app.get('/api/payment-status/:id', async (req, res) => {
                             status: 'approved'
                         });
                         saveData(db);
-                        
                         io.emit('pagamento_confirmado', {
                             user: pending.user,
                             creditos: totalCredito,
@@ -326,96 +409,90 @@ app.get('/api/payment-status/:id', async (req, res) => {
             }
         }
         
-        return res.json({
+        res.json({
             success: true,
             status: pending.status,
             user: pending.user,
             creditos: pending.creditos
         });
-        
     } catch (error) {
         console.error('Erro ao consultar pagamento:', error);
-        return res.json({ success: false, error: error.message });
+        res.json({ success: false, error: error.message });
     }
 });
 
-// ===================== ROTAS EXISTENTES =====================
+// ===================== WEBHOOK (PÚBLICO) =====================
 
-// Login
-app.post('/api/login', (req, res) => {
-    const { user, pass } = req.body;
-    const found = db.users.find(u => u.id === user && u.password === pass);
-    
-    if (found) {
-        found.logged = true;
-        db.usuariosOnline[user] = Date.now();
-        saveData(db);
-        res.json({ 
-            success: true, 
-            user: { 
-                id: found.id, 
-                role: found.role, 
-                creditos: found.creditos,
-                comissao: found.comissao,
-                ref: found.ref
-            } 
-        });
-    } else {
-        res.json({ success: false, error: 'Usuário ou senha inválidos' });
-    }
-});
-
-// Cadastro
-app.post('/api/register', (req, res) => {
-    const { user, pass, ref } = req.body;
-    
-    if (db.users.find(u => u.id === user)) {
-        res.json({ success: false, error: 'Usuário já existe' });
-        return;
-    }
-    
-    const novo = { 
-        id: user, 
-        password: pass, 
-        role: 'user', 
-        creditos: 0, 
-        comissao: 0, 
-        ref: ref || '',
-        logged: false 
-    };
-    db.users.push(novo);
-    
-    if (ref) {
-        const afiliado = db.users.find(u => u.id === ref);
-        if (afiliado) {
-            db.indicacoes.push({
-                afiliado: ref,
-                indicado: user,
-                data: new Date().toISOString(),
-                status: 'pendente',
-                bonus: 0
-            });
+app.post('/webhook', async (req, res) => {
+    try {
+        const rawBody = req.body;
+        console.log('📨 Webhook recebido:', JSON.stringify(rawBody).substring(0, 500));
+        
+        if (!rawBody || Object.keys(rawBody).length === 0) {
+            console.warn('⚠️ Body vazio recebido');
+            return res.status(200).send('OK');
         }
+        
+        const { type, data, id } = rawBody;
+        const paymentId = data?.id || id || rawBody.id;
+        
+        if (type === 'payment' || type === 'payment.created' || rawBody.action === 'payment.created') {
+            if (!paymentId) {
+                console.warn('⚠️ Payment ID não encontrado');
+                return res.status(200).send('OK');
+            }
+            
+            const pending = db.pagamentosPendentes[paymentId];
+            
+            if (pending && pending.status === 'pending') {
+                try {
+                    const paymentData = await payment.get({ id: paymentId });
+                    
+                    if (paymentData && paymentData.status === 'approved') {
+                        const user = db.users.find(u => u.id === pending.user);
+                        if (user) {
+                            const multiplier = db.multiplier || 1;
+                            const totalCredito = pending.creditos * multiplier;
+                            user.creditos += totalCredito;
+                            db.recargas.push({
+                                user: pending.user,
+                                valor: pending.valor,
+                                creditos: totalCredito,
+                                data: new Date().toISOString(),
+                                payment_id: paymentId,
+                                status: 'approved'
+                            });
+                            pending.status = 'approved';
+                            saveData(db);
+                            io.emit('pagamento_confirmado', {
+                                user: pending.user,
+                                creditos: totalCredito,
+                                payment_id: paymentId
+                            });
+                            console.log(`✅ Pagamento ${paymentId} aprovado para ${pending.user}: +${totalCredito} créditos`);
+                        }
+                    } else if (paymentData && paymentData.status === 'rejected') {
+                        pending.status = 'rejected';
+                        saveData(db);
+                        console.log(`❌ Pagamento ${paymentId} rejeitado`);
+                    }
+                } catch (error) {
+                    console.error('❌ Erro ao consultar pagamento:', error.message);
+                }
+            }
+        }
+        
+        res.status(200).send('OK');
+    } catch (error) {
+        console.error('❌ Erro no webhook:', error.message);
+        res.status(200).send('OK');
     }
-    
-    saveData(db);
-    res.json({ success: true, message: 'Cadastro realizado!' });
 });
 
-// Logout
-app.post('/api/logout', (req, res) => {
-    const { user } = req.body;
-    const found = db.users.find(u => u.id === user);
-    if (found) {
-        found.logged = false;
-        delete db.usuariosOnline[user];
-        saveData(db);
-    }
-    res.json({ success: true });
-});
+// ===================== ROTAS DE ADMIN =====================
 
 // Adicionar créditos (admin)
-app.post('/api/addcredits', (req, res) => {
+app.post('/api/addcredits', authMiddleware, adminMiddleware, (req, res) => {
     const { user, credits } = req.body;
     const found = db.users.find(u => u.id === user);
     if (found) {
@@ -428,18 +505,17 @@ app.post('/api/addcredits', (req, res) => {
 });
 
 // Resgatar código
-app.post('/api/resgatar', (req, res) => {
-    const { user, codigo } = req.body;
+app.post('/api/resgatar', authMiddleware, (req, res) => {
+    const { codigo } = req.body;
+    const user = req.user.id;
     
     if (db.codigosUsados.includes(codigo)) {
-        res.json({ success: false, error: 'Código já utilizado' });
-        return;
+        return res.json({ success: false, error: 'Código já utilizado' });
     }
     
     const codeObj = db.codigos.find(c => c.codigo === codigo);
     if (!codeObj) {
-        res.json({ success: false, error: 'Código inválido' });
-        return;
+        return res.json({ success: false, error: 'Código inválido' });
     }
     
     const found = db.users.find(u => u.id === user);
@@ -454,15 +530,8 @@ app.post('/api/resgatar', (req, res) => {
 });
 
 // Gerar código (admin)
-app.post('/api/gerarcodigo', (req, res) => {
-    const { adminUser, creditos, prefix } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Apenas administradores' });
-        return;
-    }
-    
+app.post('/api/gerarcodigo', authMiddleware, adminMiddleware, (req, res) => {
+    const { creditos, prefix } = req.body;
     const codigo = (prefix || 'ZTS') + '-' + Math.random().toString(36).substring(2,8).toUpperCase();
     db.codigos.push({ codigo, creditos: creditos || 50, criado: Date.now() });
     saveData(db);
@@ -470,13 +539,7 @@ app.post('/api/gerarcodigo', (req, res) => {
 });
 
 // Listar usuários (admin)
-app.get('/api/users/:adminUser', (req, res) => {
-    const admin = db.users.find(u => u.id === req.params.adminUser);
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Acesso negado' });
-        return;
-    }
-    
+app.get('/api/users', authMiddleware, adminMiddleware, (req, res) => {
     const users = db.users.map(u => ({
         id: u.id,
         role: u.role,
@@ -488,21 +551,12 @@ app.get('/api/users/:adminUser', (req, res) => {
 });
 
 // Promover usuário (admin)
-app.post('/api/promote', (req, res) => {
-    const { adminUser, targetUser } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Acesso negado' });
-        return;
-    }
-    
+app.post('/api/promote', authMiddleware, adminMiddleware, (req, res) => {
+    const { targetUser } = req.body;
     const target = db.users.find(u => u.id === targetUser);
     if (!target || target.role === 'master') {
-        res.json({ success: false, error: 'Não é possível promover' });
-        return;
+        return res.json({ success: false, error: 'Não é possível promover este usuário' });
     }
-    
     const roles = ['user', 'afiliado', 'admin'];
     const idx = roles.indexOf(target.role);
     if (idx < roles.length - 1) {
@@ -515,51 +569,27 @@ app.post('/api/promote', (req, res) => {
 });
 
 // Remover usuário (admin)
-app.post('/api/deleteuser', (req, res) => {
-    const { adminUser, targetUser } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Acesso negado' });
-        return;
+app.post('/api/deleteuser', authMiddleware, adminMiddleware, (req, res) => {
+    const { targetUser } = req.body;
+    if (targetUser === req.user.id) {
+        return res.json({ success: false, error: 'Não pode remover a si mesmo' });
     }
-    
-    if (targetUser === adminUser) {
-        res.json({ success: false, error: 'Não pode remover a si mesmo' });
-        return;
-    }
-    
     db.users = db.users.filter(u => u.id !== targetUser);
     saveData(db);
     res.json({ success: true });
 });
 
 // Definir multiplicador (admin)
-app.post('/api/multiplier', (req, res) => {
-    const { adminUser, value } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || (admin.role !== 'admin' && admin.role !== 'master')) {
-        res.json({ success: false, error: 'Apenas administradores' });
-        return;
-    }
-    
+app.post('/api/multiplier', authMiddleware, adminMiddleware, (req, res) => {
+    const { value } = req.body;
     db.multiplier = value;
     saveData(db);
     res.json({ success: true, multiplier: value });
 });
 
-// Resetar sistema (admin)
-app.post('/api/reset', (req, res) => {
-    const { adminUser } = req.body;
-    const admin = db.users.find(u => u.id === adminUser);
-    
-    if (!admin || admin.role !== 'master') {
-        res.json({ success: false, error: 'Apenas MASTER' });
-        return;
-    }
-    
-    const master = db.users.find(u => u.role === 'master');
+// Resetar sistema (master)
+app.post('/api/reset', authMiddleware, masterMiddleware, (req, res) => {
+    const master = db.users.find(u => u.id === req.user.id);
     db = getDefaultData();
     if (master) {
         db.users = db.users.map(u => u.role === 'master' ? master : u);
@@ -577,7 +607,18 @@ io.on('connection', (socket) => {
     io.emit('usuarios_online', Object.keys(db.usuariosOnline));
     
     socket.on('nova_mensagem', (data) => {
-        const msg = { ...data, time: Date.now(), id: Date.now().toString(36) };
+        // Validar mensagem
+        if (!data.text || data.text.length > 500) return;
+        // Sanitizar
+        const cleanText = data.text.replace(/[<>]/g, '').trim();
+        if (!cleanText) return;
+        
+        const msg = { 
+            ...data, 
+            text: cleanText,
+            time: Date.now(), 
+            id: Date.now().toString(36) 
+        };
         db.messages.push(msg);
         if (db.messages.length > 200) db.messages = db.messages.slice(-200);
         saveData(db);
@@ -607,6 +648,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('◈ SISTEMA ZTS - MAHORAGA DHARMA WHEEL ◈');
     console.log('═══════════════════════════════════════════');
     console.log(`📱 Servidor rodando na porta: ${PORT}`);
+    console.log(`🔒 Segurança: ✅ ATIVADA (bcrypt + JWT + Rate Limit)`);
     console.log(`💰 Mercado Pago: ✅ CONFIGURADO`);
     console.log(`🔗 Webhook URL: ${MP_WEBHOOK_URL}`);
     console.log(`👥 Usuários: ${db.users.length}`);

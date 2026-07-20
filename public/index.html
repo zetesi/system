@@ -604,19 +604,77 @@ body { min-height:100vh; display:flex; flex-direction:column; position:relative;
 <audio id="som_aprovado" style="display:none;"></audio>
 
 <script>
+// ===================== CONFIGURAÇÃO =====================
 const SERVER_URL = window.location.origin;
-let socket = null, currentUser = null, isConnected = false, generatedCards = [], checkerResults = [], isChecking = false, binData = {};
+const API_KEY = 'pub_2HT17PrC7sOCvNp1qwb9XBhb1RO';
 
+let socket = null;
+let currentUser = null;
+let isConnected = false;
+let generatedCards = [];
+let checkerResults = [];
+let isChecking = false;
+let binData = {};
+
+// ===================== DADOS MOCK (FALLBACK) =====================
 let mockData = {
-    users: [
-        { id: 'admin', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '' },
-        { id: 'zts', password: 'zts123', role: 'admin', creditos: 5000, comissao: 0, ref: '' },
-        { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '' }
-    ],
-    messages: [{ user: 'SISTEMA', text: '◈ Sistema ZTS online!', time: Date.now(), role: 'master', tipo: 'texto' }],
-    indicacoes: [], codigos: [], codigosUsados: [], audioFile: null, audioFileName: null, multiplier: 1, recargas: []
+    users: [],
+    messages: [],
+    indicacoes: [],
+    codigos: [],
+    codigosUsados: [],
+    audioFile: null,
+    audioFileName: null,
+    multiplier: 1,
+    recargas: []
 };
 
+// ===================== FUNÇÕES DE API COM TOKEN =====================
+
+async function apiRequest(endpoint, data, method = 'POST') {
+    try {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        const token = localStorage.getItem('zts_token');
+        if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+        
+        const response = await fetch(SERVER_URL + endpoint, {
+            method: method,
+            headers: headers,
+            body: method !== 'GET' ? JSON.stringify(data) : undefined
+        });
+        
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+async function apiGet(endpoint) {
+    try {
+        const headers = {};
+        const token = localStorage.getItem('zts_token');
+        if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+        
+        const response = await fetch(SERVER_URL + endpoint, {
+            method: 'GET',
+            headers: headers
+        });
+        return await response.json();
+    } catch(e) {
+        console.error('Erro na API:', e);
+        return { success: false, error: 'Erro de conexão' };
+    }
+}
+
+// ===================== UTILIDADES =====================
 function togglePass(id, icon) {
     const input = document.getElementById(id);
     if (!input) return;
@@ -626,6 +684,7 @@ function togglePass(id, icon) {
 
 function showSection(id) {
     document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    
     if (['checker','gerador','afiliado','recarga','chat','codigos','admin'].includes(id)) {
         document.getElementById('section-painel').classList.add('active');
         document.querySelectorAll('#section-painel .section').forEach(el => el.classList.remove('active'));
@@ -652,51 +711,80 @@ function tickClock() {
 setInterval(tickClock, 1000);
 tickClock();
 
-async function apiRequest(endpoint, data) {
-    try {
-        const response = await fetch(SERVER_URL + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        return await response.json();
-    } catch(e) { return { success: false, error: 'Erro de conexão' }; }
-}
-
-async function apiGet(endpoint) {
-    try {
-        const response = await fetch(SERVER_URL + endpoint);
-        return await response.json();
-    } catch(e) { return { success: false, error: 'Erro de conexão' }; }
-}
+// ===================== SOCKET =====================
 
 function conectarServidor() {
     try {
         socket = io(SERVER_URL, { reconnection: true, reconnectionAttempts: 10 });
-        socket.on('connect', () => { isConnected = true; document.getElementById('online_count').textContent = '● ONLINE'; document.getElementById('online_count').style.color = 'var(--success)'; });
-        socket.on('disconnect', () => { isConnected = false; document.getElementById('online_count').textContent = '● OFFLINE'; document.getElementById('online_count').style.color = 'var(--danger)'; });
-        socket.on('historico', (msgs) => { if (msgs && msgs.length > 0) { mockData.messages = msgs; atualizarChat(); } });
-        socket.on('mensagem_recebida', (msg) => { mockData.messages.push(msg); atualizarChat(); });
-        socket.on('usuarios_online', (users) => { document.getElementById('online_count').textContent = users.length + ' online'; });
+        
+        socket.on('connect', () => {
+            isConnected = true;
+            document.getElementById('online_count').textContent = '● ONLINE';
+            document.getElementById('online_count').style.color = 'var(--success)';
+        });
+        
+        socket.on('disconnect', () => {
+            isConnected = false;
+            document.getElementById('online_count').textContent = '● OFFLINE';
+            document.getElementById('online_count').style.color = 'var(--danger)';
+        });
+        
+        socket.on('historico', (msgs) => {
+            if (msgs && msgs.length > 0) {
+                mockData.messages = msgs;
+                atualizarChat();
+            }
+        });
+        
+        socket.on('mensagem_recebida', (msg) => {
+            mockData.messages.push(msg);
+            atualizarChat();
+        });
+        
+        socket.on('usuarios_online', (users) => {
+            document.getElementById('online_count').textContent = users.length + ' online';
+        });
+
         socket.on('pagamento_confirmado', (data) => {
             if (data.user === currentUser?.id && currentUser) {
                 currentUser.creditos += data.creditos;
                 document.getElementById('p_creditos').textContent = currentUser.creditos;
                 if (currentUser) localStorage.setItem('zts_user', JSON.stringify(currentUser));
-                Swal.fire({ title: '✅ Pagamento confirmado!', text: `+${data.creditos} créditos!`, icon: 'success', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
-                playSomAprovado(); fecharPix();
+                Swal.fire({ 
+                    title: '✅ Pagamento confirmado!', 
+                    text: `+${data.creditos} créditos adicionados!`,
+                    icon: 'success',
+                    timer: 3000,
+                    showConfirmButton: false,
+                    background: '#141414',
+                    color: '#e8e8e8'
+                });
+                playSomAprovado();
+                fecharPix();
             }
         });
-    } catch(e) { console.error('Erro ao conectar:', e); }
+    } catch(e) {
+        console.error('Erro ao conectar:', e);
+    }
 }
 
-// ===== LOGIN =====
+// ===================== LOGIN =====================
 document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const user = document.getElementById('login_user').value.trim();
     const pass = document.getElementById('login_pass').value.trim();
+    
     if (!user || !pass) {
         Swal.fire({ title: 'Preencha todos os campos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const result = await apiRequest('/api/login', { user, pass });
+    
     if (result.success) {
+        localStorage.setItem('zts_token', result.token);
+        localStorage.setItem('zts_user', JSON.stringify(result.user));
+        
         currentUser = result.user;
         document.getElementById('user_display').textContent = '◈ ' + user;
         entrarPainel();
@@ -706,13 +794,14 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     }
 });
 
-// ===== CADASTRO =====
+// ===================== CADASTRO =====================
 document.getElementById('cadastroForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const user = document.getElementById('cadastro_user').value.trim();
     const pass = document.getElementById('cadastro_pass').value;
     const pass2 = document.getElementById('cadastro_pass2').value;
     const ref = document.getElementById('cadastro_ref').value.trim();
+    
     if (pass !== pass2) {
         Swal.fire({ title: '❌ Senhas não coincidem', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
@@ -721,7 +810,9 @@ document.getElementById('cadastroForm').addEventListener('submit', async functio
         Swal.fire({ title: '❌ Mínimo 3 caracteres', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const result = await apiRequest('/api/register', { user, pass, ref });
+    
     if (result.success) {
         Swal.fire({ title: '✅ Cadastro realizado!', text: 'Agora faça login', icon: 'success', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         showSection('login');
@@ -731,34 +822,42 @@ document.getElementById('cadastroForm').addEventListener('submit', async functio
     }
 });
 
-// ===== PAINEL =====
+// ===================== PAINEL =====================
 function entrarPainel() {
     if (!currentUser) return;
+    
     showSection('painel');
     document.getElementById('p_user').textContent = currentUser.id;
     document.getElementById('p_creditos').textContent = currentUser.creditos || 0;
     document.getElementById('p_comissao').textContent = currentUser.comissao || 0;
+    
     const badge = document.getElementById('p_badge');
     if (currentUser.role === 'master') { badge.textContent = 'MASTER'; badge.className = 'badge master'; }
     else if (currentUser.role === 'admin') { badge.textContent = 'ADMIN'; badge.className = 'badge admin'; }
     else if (currentUser.role === 'afiliado') { badge.textContent = 'AFILIADO'; badge.className = 'badge afiliado'; }
     else { badge.textContent = 'USER'; badge.className = 'badge user'; }
+    
     document.getElementById('btn_admin').style.display = (currentUser.role === 'admin' || currentUser.role === 'master') ? 'block' : 'none';
+    
     if (currentUser.role === 'afiliado' || (currentUser.comissao && currentUser.comissao > 0)) {
         document.getElementById('p_afiliado_info').style.display = 'block';
     } else {
         document.getElementById('p_afiliado_info').style.display = 'none';
     }
+    
     document.getElementById('link-afiliado').textContent = window.location.origin + '/?ref=' + currentUser.id;
     atualizarAfiliado();
     atualizarChat();
+    
     if (currentUser) localStorage.setItem('zts_user', JSON.stringify(currentUser));
 }
 
 function logout() {
     if (currentUser) {
-        apiRequest('/api/logout', { user: currentUser.id });
+        apiRequest('/api/logout', {});
         if (socket) socket.disconnect();
+        localStorage.removeItem('zts_token');
+        localStorage.removeItem('zts_user');
         currentUser = null;
         document.getElementById('user_display').textContent = '';
     }
@@ -767,7 +866,7 @@ function logout() {
     document.getElementById('login_pass').value = '';
 }
 
-// ===== CHAT =====
+// ===================== CHAT =====================
 function atualizarChat() {
     const container = document.getElementById('chat_messages');
     const msgs = mockData.messages || [];
@@ -788,6 +887,7 @@ function enviarMensagem() {
     const input = document.getElementById('chat_input');
     const text = input.value.trim();
     if (!text || !currentUser || !socket || !socket.connected) return;
+    
     socket.emit('nova_mensagem', { user: currentUser.id, text, role: currentUser.role, tipo: 'texto' });
     input.value = '';
 }
@@ -816,29 +916,36 @@ function enviarArquivo(input) {
     reader.readAsDataURL(input.files[0]);
 }
 
+// ===================== ÁUDIO CHAT =====================
 function toggleAudioRecorder() {
     const container = document.getElementById('audio_recorder');
     if (container.classList.contains('active')) { cancelarGravacao(); return; }
+    
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         Swal.fire({ title: '❌ Não suportado', icon: 'error', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
             window.audioRecorder = new MediaRecorder(stream);
-            window.audioChunks = []; window.audioBlob = null;
+            window.audioChunks = [];
+            window.audioBlob = null;
+            
             window.audioRecorder.ondataavailable = e => { if (e.data.size > 0) window.audioChunks.push(e.data); };
             window.audioRecorder.onstop = () => {
                 window.audioBlob = new Blob(window.audioChunks, { type: 'audio/webm' });
                 document.getElementById('rec_send_btn').disabled = false;
                 stream.getTracks().forEach(track => track.stop());
             };
+            
             window.audioRecorder.start();
             container.classList.add('active');
             document.getElementById('chat_audio_btn').classList.add('recording');
             window.recSeconds = 0;
             document.getElementById('rec_timer').textContent = '00:00';
             document.getElementById('rec_send_btn').disabled = true;
+            
             clearInterval(window.recInterval);
             window.recInterval = setInterval(() => {
                 window.recSeconds++;
@@ -867,7 +974,8 @@ function cancelarGravacao() {
     clearInterval(window.recInterval);
     document.getElementById('audio_recorder').classList.remove('active');
     document.getElementById('chat_audio_btn').classList.remove('recording');
-    window.audioChunks = []; window.audioBlob = null;
+    window.audioChunks = [];
+    window.audioBlob = null;
     document.getElementById('rec_send_btn').disabled = true;
     document.getElementById('rec_timer').textContent = '00:00';
     document.querySelectorAll('#rec_wave .bar').forEach(bar => bar.style.height = '4px');
@@ -886,7 +994,7 @@ function enviarAudio() {
     reader.readAsDataURL(window.audioBlob);
 }
 
-// ===== AFILIADO =====
+// ===================== AFILIADO =====================
 function atualizarAfiliado() {
     if (!currentUser) return;
     document.getElementById('af_total').textContent = '0';
@@ -901,7 +1009,7 @@ function copiarLink() {
     Swal.fire({ title: '✅ Link copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
 
-// ===== RECARGA =====
+// ===================== RECARGA =====================
 function selectPix(valor, credito, bonus) {
     document.querySelectorAll('.pix-item').forEach(el => el.classList.remove('selected'));
     document.querySelectorAll('.pix-item').forEach(el => {
@@ -918,35 +1026,71 @@ async function gerarPix() {
         Swal.fire({ title: '⚠️ Faça login primeiro', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const valor = parseFloat(document.getElementById('pix_valor').value);
     const pixItem = document.querySelector(`.pix-item[data-valor="${valor}"]`);
     const credito = pixItem ? parseInt(pixItem.dataset.credito) : valor;
+    
     const btn = document.querySelector('.btn-hud.success');
     btn.disabled = true;
     btn.textContent = '⏳ GERANDO...';
+    
     try {
-        const response = await fetch('/api/create-pix', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: currentUser.id, valor, creditos: credito })
+        const response = await apiRequest('/api/create-pix', {
+            valor: valor,
+            creditos: credito
         });
-        const data = await response.json();
-        if (data.success) {
-            document.getElementById('pix_codigo').textContent = 'Código PIX: ' + data.copy_paste;
-            if (data.qr_code_base64) {
-                document.getElementById('pix_qr').src = 'data:image/png;base64,' + data.qr_code_base64;
-            } else if (data.qr_code) {
-                document.getElementById('pix_qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.qr_code);
+        
+        if (response.success) {
+            document.getElementById('pix_codigo').textContent = 'Código PIX: ' + response.copy_paste;
+            
+            if (response.qr_code_base64) {
+                document.getElementById('pix_qr').src = 'data:image/png;base64,' + response.qr_code_base64;
+            } else if (response.qr_code) {
+                document.getElementById('pix_qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(response.qr_code);
             }
+            
             document.getElementById('pix_resultado').style.display = 'block';
-            verificarPagamento(data.payment_id, credito);
-            Swal.fire({ title: '✅ PIX gerado!', text: 'Escaneie o QR Code ou copie o código para pagar', icon: 'success', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            
+            verificarPagamento(response.payment_id, credito);
+            
+            Swal.fire({ 
+                title: '✅ PIX gerado!', 
+                text: 'Escaneie o QR Code ou copie o código para pagar',
+                icon: 'success',
+                timer: 3000,
+                showConfirmButton: false,
+                background: '#141414',
+                color: '#e8e8e8'
+            });
         } else {
-            Swal.fire({ title: '❌ Erro', text: data.error || 'Erro ao gerar PIX', icon: 'error', toast: true, position: 'top-end', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            Swal.fire({ 
+                title: '❌ Erro', 
+                text: response.error || 'Erro ao gerar PIX',
+                icon: 'error',
+                toast: true,
+                position: 'top-end',
+                timer: 3000,
+                showConfirmButton: false,
+                background: '#141414',
+                color: '#e8e8e8'
+            });
         }
     } catch (error) {
-        Swal.fire({ title: '❌ Erro de conexão', text: error.message, icon: 'error', toast: true, position: 'top-end', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        console.error('Erro:', error);
+        Swal.fire({ 
+            title: '❌ Erro de conexão', 
+            text: error.message,
+            icon: 'error',
+            toast: true,
+            position: 'top-end',
+            timer: 3000,
+            showConfirmButton: false,
+            background: '#141414',
+            color: '#e8e8e8'
+        });
     }
+    
     btn.disabled = false;
     btn.textContent = 'GERAR PIX';
 }
@@ -954,30 +1098,56 @@ async function gerarPix() {
 function verificarPagamento(paymentId, creditosEsperados) {
     let tentativas = 0;
     const maxTentativas = 60;
+    
     const interval = setInterval(async () => {
         tentativas++;
+        
         try {
-            const response = await fetch(`/api/payment-status/${paymentId}`);
-            const data = await response.json();
-            if (data.success && data.status === 'approved') {
+            const response = await apiGet(`/api/payment-status/${paymentId}`);
+            
+            if (response.success && response.status === 'approved') {
                 clearInterval(interval);
+                
                 if (currentUser) {
                     currentUser.creditos += creditosEsperados;
                     document.getElementById('p_creditos').textContent = currentUser.creditos;
                     localStorage.setItem('zts_user', JSON.stringify(currentUser));
                 }
-                Swal.fire({ title: '✅ Pagamento confirmado!', text: `+${creditosEsperados} créditos!`, icon: 'success', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+                
+                Swal.fire({ 
+                    title: '✅ Pagamento confirmado!', 
+                    text: `+${creditosEsperados} créditos adicionados!`,
+                    icon: 'success',
+                    timer: 3000,
+                    showConfirmButton: false,
+                    background: '#141414',
+                    color: '#e8e8e8'
+                });
+                
                 playSomAprovado();
                 setTimeout(() => fecharPix(), 3000);
                 return;
             }
-            if (data.success && data.status === 'rejected') {
+            
+            if (response.success && response.status === 'rejected') {
                 clearInterval(interval);
-                Swal.fire({ title: '❌ Pagamento recusado', icon: 'error', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+                Swal.fire({ 
+                    title: '❌ Pagamento recusado', 
+                    icon: 'error',
+                    timer: 3000,
+                    showConfirmButton: false,
+                    background: '#141414',
+                    color: '#e8e8e8'
+                });
                 return;
             }
+            
             document.getElementById('pix_info').textContent = `⏳ Aguardando pagamento... (${tentativas}s)`;
-        } catch (error) { console.error('Erro ao verificar:', error); }
+            
+        } catch (error) {
+            console.error('Erro ao verificar:', error);
+        }
+        
         if (tentativas >= maxTentativas) {
             clearInterval(interval);
             document.getElementById('pix_info').textContent = '⏰ Tempo esgotado. Verifique manualmente.';
@@ -995,7 +1165,7 @@ function fecharPix() {
     document.getElementById('pix_resultado').style.display = 'none';
 }
 
-// ===== CÓDIGOS =====
+// ===================== CÓDIGOS =====================
 async function resgatarCodigo() {
     if (!currentUser) return;
     const codigo = document.getElementById('input-codigo').value.trim().toUpperCase();
@@ -1003,12 +1173,14 @@ async function resgatarCodigo() {
         Swal.fire({ title: 'Digite um código', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
-    const result = await apiRequest('/api/resgatar', { user: currentUser.id, codigo });
+    
+    const result = await apiRequest('/api/resgatar', { codigo });
     if (result.success) {
         currentUser.creditos = result.creditos;
         document.getElementById('p_creditos').textContent = result.creditos;
         document.getElementById('codigos_resgatados').textContent = mockData.codigosUsados.length;
         if (currentUser) localStorage.setItem('zts_user', JSON.stringify(currentUser));
+        
         Swal.fire({ title: '✅ Resgatado!', text: '+' + result.ganhos + ' créditos!', icon: 'success', timer: 2500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         document.getElementById('input-codigo').value = '';
         playSomAprovado();
@@ -1017,7 +1189,8 @@ async function resgatarCodigo() {
     }
 }
 
-// ===== CHECKER =====
+// ===================== CHECKER =====================
+
 function detectBandeira(numero) {
     if (numero.startsWith('3')) return 'AMEX';
     if (numero.startsWith('4')) return 'VISA';
@@ -1037,10 +1210,24 @@ async function validarCartao(cardData) {
         const MES = partes[1].trim();
         let ANO = partes[2].trim();
         const CVV = partes[3].trim();
+        
         if (ANO.length === 2) ANO = '20' + ANO;
+        
         const isLive = Math.random() > 0.6;
-        return { success: true, live: isLive, card: CARD, mes: MES, ano: ANO, cvv: CVV, bandeira: detectBandeira(CARD), formatted: formatCardMasked(CARD) };
-    } catch(e) { return { success: false, error: e.message }; }
+        
+        return {
+            success: true,
+            live: isLive,
+            card: CARD,
+            mes: MES,
+            ano: ANO,
+            cvv: CVV,
+            bandeira: detectBandeira(CARD),
+            formatted: formatCardMasked(CARD)
+        };
+    } catch(e) {
+        return { success: false, error: e.message };
+    }
 }
 
 async function startChecker() {
@@ -1049,26 +1236,48 @@ async function startChecker() {
         Swal.fire({ title: '⚠️ Faça login primeiro', icon: 'warning', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const textarea = document.getElementById('checker_cards');
     const lines = textarea.value.split('\n').filter(line => line.trim());
+    
     if (lines.length === 0) {
         Swal.fire({ title: '⚠️ Nenhum cartão para validar', icon: 'warning', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     if (currentUser.creditos < lines.length) {
-        Swal.fire({ title: '❌ Créditos insuficientes!', text: `Você tem ${currentUser.creditos} créditos, precisa de ${lines.length}`, icon: 'error', toast: true, position: 'top-end', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+        Swal.fire({ 
+            title: '❌ Créditos insuficientes!', 
+            text: `Você tem ${currentUser.creditos} créditos, precisa de ${lines.length}`,
+            icon: 'error',
+            toast: true,
+            position: 'top-end',
+            timer: 3000,
+            showConfirmButton: false,
+            background: '#141414',
+            color: '#e8e8e8'
+        });
         return;
     }
-    isChecking = true; checkerResults = []; let live = 0, dead = 0;
+    
+    isChecking = true;
+    checkerResults = [];
+    let live = 0, dead = 0;
+    
     const container = document.getElementById('checker_results');
     container.innerHTML = '';
+    
     const progress = document.getElementById('checker_progress');
+    
     for (let i = 0; i < lines.length; i++) {
         const cardLine = lines[i].trim();
+        
         const pct = ((i + 1) / lines.length * 100);
         progress.style.width = pct + '%';
         progress.textContent = Math.round(pct) + '%';
+        
         const result = await validarCartao(cardLine);
+        
         if (result.success) {
             if (result.live) {
                 live++;
@@ -1078,30 +1287,54 @@ async function startChecker() {
                     localStorage.setItem('zts_user', JSON.stringify(currentUser));
                 }
                 await apiRequest('/api/addcredits', { user: currentUser.id, credits: -1 });
-            } else { dead++; }
+            } else {
+                dead++;
+            }
+            
             checkerResults.push(result);
+            
             const div = document.createElement('div');
             div.className = 'card-item';
             const statusClass = result.live ? 'live' : 'dead';
             const statusText = result.live ? '✅ LIVE' : '❌ DEAD';
-            div.innerHTML = `<span class="card-number">${result.formatted}</span><span class="card-details">${result.mes}/${result.ano.substring(2)} CVV:${result.cvv}</span><span class="status-badge ${statusClass}">${statusText}</span>`;
+            div.innerHTML = `
+                <span class="card-number">${result.formatted}</span>
+                <span class="card-details">${result.mes}/${result.ano.substring(2)} CVV:${result.cvv}</span>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+            `;
             container.appendChild(div);
         } else {
             const div = document.createElement('div');
             div.className = 'card-item';
-            div.innerHTML = `<span class="card-number">${cardLine.substring(0, 15)}...</span><span class="status-badge" style="background:var(--danger-dim);color:var(--danger);">⚠️ ERRO</span>`;
+            div.innerHTML = `
+                <span class="card-number">${cardLine.substring(0, 15)}...</span>
+                <span class="status-badge" style="background:var(--danger-dim);color:var(--danger);">⚠️ ERRO</span>
+            `;
             container.appendChild(div);
         }
+        
         document.getElementById('ch_total').textContent = i + 1;
         document.getElementById('ch_live').textContent = live;
         document.getElementById('ch_dead').textContent = dead;
         document.getElementById('ch_live_count').textContent = live;
         document.getElementById('ch_dead_count').textContent = dead;
+        
         await new Promise(r => setTimeout(r, 500));
     }
+    
     isChecking = false;
+    
     if (live > 0) playSomAprovado();
-    Swal.fire({ title: '✅ Check concluído!', text: `${live} LIVE(s) encontrado(s)! Créditos restantes: ${currentUser.creditos}`, icon: 'success', timer: 3000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    
+    Swal.fire({ 
+        title: '✅ Check concluído!', 
+        text: `${live} LIVE(s) encontrado(s)! Créditos restantes: ${currentUser.creditos}`,
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false,
+        background: '#141414',
+        color: '#e8e8e8'
+    });
 }
 
 function clearChecker() {
@@ -1123,7 +1356,11 @@ function copyCheckerResults() {
         return;
     }
     let text = '';
-    checkerResults.forEach(r => { if (r.success && r.live) text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`; });
+    checkerResults.forEach(r => {
+        if (r.success && r.live) {
+            text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`;
+        }
+    });
     navigator.clipboard.writeText(text).catch(() => {});
     Swal.fire({ title: '✅ Copiado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
@@ -1134,7 +1371,11 @@ function downloadCheckerResults() {
         return;
     }
     let text = '';
-    checkerResults.forEach(r => { if (r.success && r.live) text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`; });
+    checkerResults.forEach(r => {
+        if (r.success && r.live) {
+            text += `${r.card}|${r.mes}|${r.ano}|${r.cvv}\n`;
+        }
+    });
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1144,7 +1385,8 @@ function downloadCheckerResults() {
     URL.revokeObjectURL(url);
 }
 
-// ===== GERADOR =====
+// ===================== GERADOR =====================
+
 function luhnCheck(cardNumber) {
     const digits = cardNumber.split('').map(Number);
     let sum = 0, isEven = false;
@@ -1170,11 +1412,16 @@ function processBinWithX(binString) {
 function generateValidCard(binStart) {
     const processedBin = processBinWithX(binStart);
     const cardLength = (processedBin.startsWith('34') || processedBin.startsWith('37')) ? 15 : 16;
+    
     while (true) {
         let cardNumber = processedBin;
         const missingDigits = cardLength - cardNumber.length;
-        for (let i = 0; i < missingDigits; i++) cardNumber += Math.floor(Math.random() * 10);
-        if (cardNumber.length === cardLength && luhnCheck(cardNumber)) return cardNumber;
+        for (let i = 0; i < missingDigits; i++) {
+            cardNumber += Math.floor(Math.random() * 10);
+        }
+        if (cardNumber.length === cardLength && luhnCheck(cardNumber)) {
+            return cardNumber;
+        }
         if (cardNumber.length === cardLength) {
             for (let lastDigit = 0; lastDigit < 10; lastDigit++) {
                 const testNumber = cardNumber.substring(0, cardLength - 1) + lastDigit;
@@ -1187,6 +1434,7 @@ function generateValidCard(binStart) {
 function generateCompleteCard(binStart, fixedMonth = null, fixedYear = null) {
     const cardNumber = generateValidCard(binStart);
     let month, year, displayYear;
+    
     if (fixedMonth && fixedYear) {
         month = fixedMonth;
         year = fixedYear;
@@ -1197,10 +1445,12 @@ function generateCompleteCard(binStart, fixedMonth = null, fixedYear = null) {
         displayYear = year;
     }
     month = month.toString().padStart(2, '0');
+    
     const isAmex = binStart.startsWith('34') || binStart.startsWith('37');
     const cvvLength = isAmex ? 4 : 3;
     let cvv = '';
     for (let i = 0; i < cvvLength; i++) cvv += Math.floor(Math.random() * 10);
+    
     return { number: cardNumber, month, year: displayYear, shortYear: displayYear.toString().substring(2), cvv, isAmex };
 }
 
@@ -1227,10 +1477,19 @@ async function consultarBIN(binNum) {
         });
         const data = await response.json();
         if (data.status === 'success') {
-            return { success: true, bank: data.data.issuing_bank || 'Desconhecido', brand: data.data.card_brand || 'Desconhecido', level: data.data.card_level_generic || 'Desconhecido', country: data.data.country || '', type: data.data.card_type || 'CREDIT' };
+            return {
+                success: true,
+                bank: data.data.issuing_bank || 'Desconhecido',
+                brand: data.data.card_brand || 'Desconhecido',
+                level: data.data.card_level_generic || 'Desconhecido',
+                country: data.data.country || '',
+                type: data.data.card_type || 'CREDIT'
+            };
         }
         return { success: false };
-    } catch(e) { return { success: false }; }
+    } catch(e) {
+        return { success: false };
+    }
 }
 
 async function generateCards() {
@@ -1239,11 +1498,13 @@ async function generateCards() {
         Swal.fire({ title: '⚠️ Digite uma BIN', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const quantity = parseInt(document.getElementById('gen_qty').value) || 10;
     if (quantity < 1 || quantity > 100) {
         Swal.fire({ title: '⚠️ Quantidade entre 1 e 100', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     let bin, fixedMonth = null, fixedYear = null;
     if (inputData.includes('|')) {
         const parts = inputData.split('|');
@@ -1253,14 +1514,18 @@ async function generateCards() {
             let y = parts[2].trim();
             fixedYear = y.length === 2 ? `20${y}` : y;
         }
-    } else { bin = inputData; }
+    } else {
+        bin = inputData;
+    }
     if (document.getElementById('gen_month').value) fixedMonth = document.getElementById('gen_month').value;
     if (document.getElementById('gen_year').value) fixedYear = document.getElementById('gen_year').value;
+    
     const cleanBin = bin.replace(/\D/g, '').substring(0, 6);
     if (cleanBin.length < 6) {
         Swal.fire({ title: '⚠️ BIN deve ter 6 dígitos', icon: 'warning', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
+    
     const result = await consultarBIN(cleanBin);
     if (result.success) {
         binData = result;
@@ -1281,17 +1546,27 @@ async function generateCards() {
         document.getElementById('bin_status').textContent = '● OFFLINE';
         document.getElementById('bin_status').style.color = 'var(--gold)';
     }
+    
     const container = document.getElementById('cards_container');
     generatedCards = [];
     let html = '';
     const format = document.getElementById('gen_format').value;
+    
     for (let i = 0; i < quantity; i++) {
         const card = generateCompleteCard(bin, fixedMonth, fixedYear);
         generatedCards.push(card);
-        html += `<div class="card-item"><span class="card-number">${formatCardNumber(card.number)}</span><span class="card-details">${card.month}/${card.shortYear} CVV:${card.cvv}</span><div class="card-actions"><button onclick="copyCard('${formatCardForExport(card, format).replace(/'/g, "\\'")}')" title="Copiar">📋</button></div></div>`;
+        html += `<div class="card-item">
+            <span class="card-number">${formatCardNumber(card.number)}</span>
+            <span class="card-details">${card.month}/${card.shortYear} CVV:${card.cvv}</span>
+            <div class="card-actions">
+                <button onclick="copyCard('${formatCardForExport(card, format).replace(/'/g, "\\'")}')" title="Copiar">📋</button>
+            </div>
+        </div>`;
     }
+    
     container.innerHTML = html;
     document.getElementById('cards_count').textContent = generatedCards.length;
+    
     Swal.fire({ title: '✅ ' + generatedCards.length + ' cartões gerados!', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
 }
 
@@ -1341,11 +1616,12 @@ function clearGenerator() {
     document.getElementById('cards_count').textContent = '0';
 }
 
-// ===== ADMIN =====
+// ===================== ADMIN =====================
 async function adminGerarCodigo() {
     const creditos = parseInt(document.getElementById('admin_codigo_creditos').value) || 50;
     const prefix = document.getElementById('admin_codigo_prefix').value.trim().toUpperCase() || 'ZTS';
-    const result = await apiRequest('/api/gerarcodigo', { adminUser: currentUser.id, creditos, prefix });
+    
+    const result = await apiRequest('/api/gerarcodigo', { creditos, prefix });
     if (result.success) {
         const list = document.getElementById('admin_codigos_list');
         list.innerHTML += `<div style="color:var(--gold);font-size:10px;padding:2px 0;">${result.codigo} - ${result.creditos} créditos</div>`;
@@ -1357,36 +1633,52 @@ async function adminGerarCodigo() {
 }
 
 async function adminSetMultiplier(valor) {
-    const result = await apiRequest('/api/multiplier', { adminUser: currentUser.id, value: valor });
+    const result = await apiRequest('/api/multiplier', { value: valor });
     if (result.success) {
         document.querySelectorAll('#mult_off, #mult_dobro, #mult_triplo').forEach(b => b.style.borderColor = 'var(--border)');
         if (valor === 1) document.getElementById('mult_off').style.borderColor = 'var(--gold)';
         else if (valor === 2) document.getElementById('mult_dobro').style.borderColor = 'var(--gold)';
         else if (valor === 3) document.getElementById('mult_triplo').style.borderColor = 'var(--gold)';
+        
         const display = document.getElementById('multiplier_status_display');
         if (valor === 1) display.innerHTML = '<span style="font-size:9px;color:var(--text-dim);">Multiplicador desativado</span>';
         else if (valor === 2) display.innerHTML = '<span class="multiplier-status dobro">◈ DOBRO (2x)</span>';
         else if (valor === 3) display.innerHTML = '<span class="multiplier-status triplo">◈ TRIPLO (3x)</span>';
+        
         Swal.fire({ title: '✅ Multiplicador alterado!', text: valor + 'x ativo', icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
     }
 }
 
 async function adminAtualizarLista() {
-    const result = await apiGet(`/api/users/${currentUser.id}`);
+    const result = await apiGet('/api/users');
     if (result.success) {
         const list = document.getElementById('admin_user_list');
         let html = '';
         result.users.forEach(u => {
             const roleClass = u.role === 'master' ? 'master' : (u.role === 'admin' ? 'admin' : (u.role === 'afiliado' ? 'afiliado' : ''));
-            html += `<div class="user-list-item"><span class="user-name">${u.id}</span><span class="user-role ${roleClass}">${u.role.toUpperCase()}</span><span style="font-size:8px;color:var(--text-dim);">💰 ${u.creditos}</span><div class="user-actions">${u.role !== 'master' ? `<button class="btn-xs gold" onclick="adminPromover('${u.id}')">⭐</button>` : ''}${u.role !== 'master' ? `<button class="btn-xs danger" onclick="adminDeletar('${u.id}')">🗑</button>` : ''}<button class="btn-xs success" onclick="adminAddCredits('${u.id}')">💰</button></div></div>`;
+            html += `
+                <div class="user-list-item">
+                    <span class="user-name">${u.id}</span>
+                    <span class="user-role ${roleClass}">${u.role.toUpperCase()}</span>
+                    <span style="font-size:8px;color:var(--text-dim);">💰 ${u.creditos}</span>
+                    <div class="user-actions">
+                        ${u.role !== 'master' ? `<button class="btn-xs gold" onclick="adminPromover('${u.id}')">⭐</button>` : ''}
+                        ${u.role !== 'master' ? `<button class="btn-xs danger" onclick="adminDeletar('${u.id}')">🗑</button>` : ''}
+                        <button class="btn-xs success" onclick="adminAddCredits('${u.id}')">💰</button>
+                    </div>
+                </div>
+            `;
         });
         list.innerHTML = html;
     }
 }
 
 async function adminPromover(targetUser) {
-    const result = await apiRequest('/api/promote', { adminUser: currentUser.id, targetUser });
-    if (result.success) { adminAtualizarLista(); Swal.fire({ title: '✅ Promovido!', text: targetUser + ' agora é ' + result.newRole, icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' }); }
+    const result = await apiRequest('/api/promote', { targetUser });
+    if (result.success) {
+        adminAtualizarLista();
+        Swal.fire({ title: '✅ Promovido!', text: targetUser + ' agora é ' + result.newRole, icon: 'success', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+    }
 }
 
 async function adminDeletar(targetUser) {
@@ -1394,20 +1686,43 @@ async function adminDeletar(targetUser) {
         Swal.fire({ title: '❌ Não pode remover a si mesmo', icon: 'error', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
         return;
     }
-    Swal.fire({ title: '⚠️ Confirmar exclusão', text: 'Remover ' + targetUser + '?', icon: 'warning', showCancelButton: true, confirmButtonText: 'SIM', cancelButtonText: 'NÃO', background: '#141414', color: '#e8e8e8' }).then(async (result) => {
+    Swal.fire({
+        title: '⚠️ Confirmar exclusão',
+        text: 'Remover ' + targetUser + '?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'SIM',
+        cancelButtonText: 'NÃO',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
         if (result.isConfirmed) {
-            const response = await apiRequest('/api/deleteuser', { adminUser: currentUser.id, targetUser });
-            if (response.success) { adminAtualizarLista(); Swal.fire({ title: '✅ Removido!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' }); }
+            const response = await apiRequest('/api/deleteuser', { targetUser });
+            if (response.success) {
+                adminAtualizarLista();
+                Swal.fire({ title: '✅ Removido!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
+            }
         }
     });
 }
 
 async function adminAddCredits(targetUser) {
-    Swal.fire({ title: 'Adicionar créditos', input: 'number', inputLabel: 'Quantos?', inputValue: 100, showCancelButton: true, background: '#141414', color: '#e8e8e8' }).then(async (result) => {
+    Swal.fire({
+        title: 'Adicionar créditos',
+        input: 'number',
+        inputLabel: 'Quantos?',
+        inputValue: 100,
+        showCancelButton: true,
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
         if (result.isConfirmed && result.value) {
             const response = await apiRequest('/api/addcredits', { user: targetUser, credits: parseInt(result.value) });
             if (response.success) {
-                if (targetUser === currentUser.id) { currentUser.creditos = response.creditos; document.getElementById('p_creditos').textContent = response.creditos; }
+                if (targetUser === currentUser.id) {
+                    currentUser.creditos = response.creditos;
+                    document.getElementById('p_creditos').textContent = response.creditos;
+                }
                 adminAtualizarLista();
                 Swal.fire({ title: '✅ Adicionado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
             }
@@ -1418,7 +1733,15 @@ async function adminAddCredits(targetUser) {
 function adminCriarUsuario() {
     Swal.fire({
         title: 'Criar usuário',
-        html: `<input id="swal_user" placeholder="Usuário" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;"><input id="swal_pass" placeholder="Senha" type="password" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;"><select id="swal_role" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;"><option value="user">User</option><option value="afiliado">Afiliado</option><option value="admin">Admin</option></select>`,
+        html: `
+            <input id="swal_user" placeholder="Usuário" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;">
+            <input id="swal_pass" placeholder="Senha" type="password" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;margin-bottom:6px;">
+            <select id="swal_role" style="width:100%;padding:8px;background:#0d0d0d;border:1px solid #2a2a2a;color:#e8e8e8;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;">
+                <option value="user">User</option>
+                <option value="afiliado">Afiliado</option>
+                <option value="admin">Admin</option>
+            </select>
+        `,
         showCancelButton: true,
         confirmButtonText: 'CRIAR',
         background: '#141414',
@@ -1435,8 +1758,6 @@ function adminCriarUsuario() {
             const { user, pass, role } = result.value;
             const response = await apiRequest('/api/register', { user, pass, ref: '' });
             if (response.success) {
-                const userObj = mockData.users.find(u => u.id === user);
-                if (userObj) userObj.role = role;
                 adminAtualizarLista();
                 Swal.fire({ title: '✅ Criado!', icon: 'success', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
             }
@@ -1472,9 +1793,18 @@ function adminRemoveAudio() {
 }
 
 function adminClearAll() {
-    Swal.fire({ title: '⚠️ PERIGO!', text: 'Limpar TODOS os dados?', icon: 'warning', showCancelButton: true, confirmButtonText: 'SIM', cancelButtonText: 'NÃO', background: '#141414', color: '#e8e8e8' }).then(async (result) => {
+    Swal.fire({
+        title: '⚠️ PERIGO!',
+        text: 'Limpar TODOS os dados?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'SIM',
+        cancelButtonText: 'NÃO',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(async (result) => {
         if (result.isConfirmed) {
-            const response = await apiRequest('/api/reset', { adminUser: currentUser.id });
+            const response = await apiRequest('/api/reset', {});
             if (response.success) {
                 Swal.fire({ title: '✅ Sistema limpo!', icon: 'success', timer: 2000, showConfirmButton: false, background: '#141414', color: '#e8e8e8' });
                 setTimeout(() => location.reload(), 1500);
@@ -1484,11 +1814,19 @@ function adminClearAll() {
 }
 
 function adminResetSystem() {
-    Swal.fire({ title: '🔄 Reiniciar sistema?', icon: 'info', showCancelButton: true, confirmButtonText: 'REINICIAR', background: '#141414', color: '#e8e8e8' }).then(result => {
+    Swal.fire({
+        title: '🔄 Reiniciar sistema?',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'REINICIAR',
+        background: '#141414',
+        color: '#e8e8e8'
+    }).then(result => {
         if (result.isConfirmed) location.reload();
     });
 }
 
+// ===================== ÁUDIO =====================
 function playSomAprovado() {
     if (mockData.audioFile) {
         const audio = document.getElementById('som_aprovado');
@@ -1512,19 +1850,30 @@ function playSomAprovado() {
     }
 }
 
+// ===================== INICIALIZAÇÃO =====================
+
+console.log('🚀 Sistema ZTS - Mahoraga Dharma Wheel (Seguro)');
 conectarServidor();
+
 document.getElementById('codigos_resgatados').textContent = '0';
 
+const savedToken = localStorage.getItem('zts_token');
 const savedUser = localStorage.getItem('zts_user');
-if (savedUser) {
+
+if (savedToken && savedUser) {
     try {
         const user = JSON.parse(savedUser);
         currentUser = user;
         document.getElementById('user_display').textContent = '◈ ' + user.id;
         entrarPainel();
-    } catch(e) {}
+        conectarServidor();
+    } catch(e) {
+        localStorage.removeItem('zts_token');
+        localStorage.removeItem('zts_user');
+    }
 }
-console.log('◈ Sistema ZTS - Mahoraga Dharma Wheel');
+
+console.log('◈ Sistema pronto!');
 </script>
 </body>
 </html>
