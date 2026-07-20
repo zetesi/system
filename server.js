@@ -5,30 +5,44 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
+// SDK do Mercado Pago
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: { origin: "*" }
-});
+const io = socketIo(server, { cors: { origin: "*" } });
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos da pasta public
+// Servir arquivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ROTA RAIZ - OBRIGATÓRIA!
+// Rota raiz
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// ===================== MERCADO PAGO - SUAS CREDENCIAIS =====================
+
+const MP_ACCESS_TOKEN = 'APP_USR-5823435670170048-030708-318fc7a16e0012b0abac1ffca6045011-1907448126';
+const MP_PUBLIC_KEY = 'APP_USR-81d4c82a-9e37-4141-b926-c499b6a71c19';
+const MP_WEBHOOK_URL = 'https://dharmawhellchk.onrender.com/webhook';
+
+// Inicializar cliente do Mercado Pago
+const client = new MercadoPagoConfig({
+    accessToken: MP_ACCESS_TOKEN
+});
+
+const payment = new Payment(client);
+
+console.log('💰 Mercado Pago configurado com sucesso!');
 
 // ===================== BANCO DE DADOS =====================
 
 const DATA_FILE = path.join(__dirname, 'data', 'database.json');
 
-// Garantir que a pasta data existe
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
     fs.mkdirSync(path.join(__dirname, 'data'));
 }
@@ -48,12 +62,12 @@ function loadData() {
 function getDefaultData() {
     return {
         users: [
-            { id: 'admin', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
+            { id: 'Zts', password: 'admin123', role: 'master', creditos: 9999, comissao: 0, ref: '', logged: false },
             { id: 'zts', password: 'zts123', role: 'admin', creditos: 5000, comissao: 0, ref: '', logged: false },
             { id: 'teste', password: 'teste123', role: 'user', creditos: 100, comissao: 0, ref: '', logged: false }
         ],
         messages: [
-            { user: 'SISTEMA', text: '◈ Sistema ZTS online! Bem-vindo!', time: Date.now(), role: 'master', tipo: 'texto' }
+            { user: 'SISTEMA', text: '◈ Sistema ZTS online!', time: Date.now(), role: 'master', tipo: 'texto' }
         ],
         indicacoes: [],
         codigos: [],
@@ -62,7 +76,7 @@ function getDefaultData() {
         audioFileName: null,
         multiplier: 1,
         recargas: [],
-        usuariosOnline: {}
+        pagamentosPendentes: {}
     };
 }
 
@@ -76,10 +90,208 @@ function saveData(data) {
     }
 }
 
-// Carregar dados
 let db = loadData();
 
-// ===================== API ROTAS =====================
+// ===================== MERCADO PAGO - CRIAR PIX =====================
+
+app.post('/api/create-pix', async (req, res) => {
+    try {
+        const { user, valor, creditos } = req.body;
+        
+        if (!user || !valor || !creditos) {
+            return res.json({ success: false, error: 'Dados incompletos' });
+        }
+        
+        const userData = db.users.find(u => u.id === user);
+        if (!userData) {
+            return res.json({ success: false, error: 'Usuário não encontrado' });
+        }
+        
+        // Criar pagamento PIX no Mercado Pago
+        const request = {
+            body: {
+                transaction_amount: parseFloat(valor),
+                description: `Recarga de créditos - ${user}`,
+                payment_method_id: 'pix',
+                payer: {
+                    email: `${user}@zts-system.com`,
+                    first_name: user,
+                },
+                notification_url: MP_WEBHOOK_URL,
+                external_reference: `recarga_${user}_${Date.now()}`
+            }
+        };
+        
+        console.log('📡 Criando PIX para:', user, 'Valor:', valor);
+        
+        const response = await payment.create(request);
+        
+        if (!response || !response.id) {
+            return res.json({ success: false, error: 'Erro ao criar PIX' });
+        }
+        
+        db.pagamentosPendentes[response.id] = {
+            user: user,
+            creditos: creditos,
+            valor: valor,
+            status: 'pending',
+            criado: Date.now()
+        };
+        saveData(db);
+        
+        const qrCode = response.point_of_interaction?.transaction_data?.qr_code || '';
+        const qrCodeBase64 = response.point_of_interaction?.transaction_data?.qr_code_base64 || '';
+        const copyPaste = response.point_of_interaction?.transaction_data?.ticket_url || '';
+        
+        console.log('✅ PIX criado! ID:', response.id);
+        
+        return res.json({
+            success: true,
+            payment_id: response.id,
+            qr_code: qrCode,
+            qr_code_base64: qrCodeBase64,
+            copy_paste: copyPaste,
+            status: response.status
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao criar PIX:', error);
+        return res.json({ success: false, error: error.message });
+    }
+});
+
+// ===================== MERCADO PAGO - WEBHOOK =====================
+
+app.post('/webhook', async (req, res) => {
+    try {
+        const rawBody = req.body;
+        const { type, data, id } = rawBody;
+        
+        console.log('📨 Webhook recebido:', type, id || data?.id);
+        
+        if (type === 'payment' || type === 'payment.created') {
+            const paymentId = data?.id || id;
+            
+            if (!paymentId) {
+                return res.status(200).send('OK');
+            }
+            
+            const pending = db.pagamentosPendentes[paymentId];
+            
+            if (pending && pending.status === 'pending') {
+                try {
+                    const paymentData = await payment.get({ id: paymentId });
+                    
+                    console.log('📊 Status do pagamento:', paymentData?.status);
+                    
+                    if (paymentData && paymentData.status === 'approved') {
+                        const user = db.users.find(u => u.id === pending.user);
+                        if (user) {
+                            const multiplier = db.multiplier || 1;
+                            const totalCredito = pending.creditos * multiplier;
+                            
+                            user.creditos += totalCredito;
+                            
+                            db.recargas.push({
+                                user: pending.user,
+                                valor: pending.valor,
+                                creditos: totalCredito,
+                                data: new Date().toISOString(),
+                                payment_id: paymentId,
+                                status: 'approved'
+                            });
+                            
+                            pending.status = 'approved';
+                            saveData(db);
+                            
+                            io.emit('pagamento_confirmado', {
+                                user: pending.user,
+                                creditos: totalCredito,
+                                payment_id: paymentId
+                            });
+                            
+                            console.log(`✅ Pagamento ${paymentId} aprovado para ${pending.user}: +${totalCredito} créditos`);
+                        }
+                    } else if (paymentData && paymentData.status === 'rejected') {
+                        pending.status = 'rejected';
+                        saveData(db);
+                        console.log(`❌ Pagamento ${paymentId} rejeitado`);
+                    }
+                } catch (error) {
+                    console.error('Erro ao consultar pagamento:', error);
+                }
+            }
+        }
+        
+        res.status(200).send('OK');
+        
+    } catch (error) {
+        console.error('❌ Erro no webhook:', error);
+        res.status(200).send('OK');
+    }
+});
+
+// ===================== CONSULTAR STATUS DO PAGAMENTO =====================
+
+app.get('/api/payment-status/:id', async (req, res) => {
+    try {
+        const paymentId = req.params.id;
+        const pending = db.pagamentosPendentes[paymentId];
+        
+        if (!pending) {
+            return res.json({ success: false, error: 'Pagamento não encontrado' });
+        }
+        
+        if (pending.status === 'pending') {
+            try {
+                const paymentData = await payment.get({ id: paymentId });
+                if (paymentData && paymentData.status === 'approved') {
+                    pending.status = 'approved';
+                    saveData(db);
+                    
+                    // Adicionar créditos se ainda não foi feito
+                    const user = db.users.find(u => u.id === pending.user);
+                    if (user) {
+                        const multiplier = db.multiplier || 1;
+                        const totalCredito = pending.creditos * multiplier;
+                        user.creditos += totalCredito;
+                        
+                        db.recargas.push({
+                            user: pending.user,
+                            valor: pending.valor,
+                            creditos: totalCredito,
+                            data: new Date().toISOString(),
+                            payment_id: paymentId,
+                            status: 'approved'
+                        });
+                        saveData(db);
+                        
+                        io.emit('pagamento_confirmado', {
+                            user: pending.user,
+                            creditos: totalCredito,
+                            payment_id: paymentId
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao consultar status:', e);
+            }
+        }
+        
+        return res.json({
+            success: true,
+            status: pending.status,
+            user: pending.user,
+            creditos: pending.creditos
+        });
+        
+    } catch (error) {
+        console.error('Erro ao consultar pagamento:', error);
+        return res.json({ success: false, error: error.message });
+    }
+});
+
+// ===================== ROTAS EXISTENTES =====================
 
 // Login
 app.post('/api/login', (req, res) => {
@@ -154,7 +366,7 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Adicionar créditos
+// Adicionar créditos (admin)
 app.post('/api/addcredits', (req, res) => {
     const { user, credits } = req.body;
     const found = db.users.find(u => u.id === user);
@@ -289,25 +501,6 @@ app.post('/api/multiplier', (req, res) => {
     res.json({ success: true, multiplier: value });
 });
 
-// Obter dados do usuário
-app.get('/api/user/:id', (req, res) => {
-    const user = db.users.find(u => u.id === req.params.id);
-    if (user) {
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                role: user.role,
-                creditos: user.creditos,
-                comissao: user.comissao,
-                ref: user.ref
-            }
-        });
-    } else {
-        res.json({ success: false, error: 'Usuário não encontrado' });
-    }
-});
-
 // Resetar sistema (admin)
 app.post('/api/reset', (req, res) => {
     const { adminUser } = req.body;
@@ -327,32 +520,19 @@ app.post('/api/reset', (req, res) => {
     res.json({ success: true });
 });
 
-// ===================== SOCKET.IO (CHAT) =====================
+// ===================== SOCKET.IO =====================
 
 io.on('connection', (socket) => {
     console.log('🔗 Usuário conectado:', socket.id);
     
-    // Enviar histórico
     socket.emit('historico', db.messages);
+    io.emit('usuarios_online', Object.keys(db.usuariosOnline));
     
-    // Enviar usuários online
-    const onlineUsers = Object.keys(db.usuariosOnline);
-    io.emit('usuarios_online', onlineUsers);
-    
-    // Receber mensagem
     socket.on('nova_mensagem', (data) => {
-        const msg = {
-            ...data,
-            time: Date.now(),
-            id: Date.now().toString(36)
-        };
-        
+        const msg = { ...data, time: Date.now(), id: Date.now().toString(36) };
         db.messages.push(msg);
-        if (db.messages.length > 200) {
-            db.messages = db.messages.slice(-200);
-        }
+        if (db.messages.length > 200) db.messages = db.messages.slice(-200);
         saveData(db);
-        
         io.emit('mensagem_recebida', msg);
     });
     
@@ -379,9 +559,9 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('◈ SISTEMA ZTS - MAHORAGA DHARMA WHEEL ◈');
     console.log('═══════════════════════════════════════════');
     console.log(`📱 Servidor rodando na porta: ${PORT}`);
-    console.log(`🌐 Acesse: http://localhost:${PORT}`);
-    console.log('═══════════════════════════════════════════');
-    console.log('👥 Usuários:', db.users.length);
-    console.log('💬 Mensagens:', db.messages.length);
+    console.log(`💰 Mercado Pago: ✅ CONFIGURADO`);
+    console.log(`🔗 Webhook URL: ${MP_WEBHOOK_URL}`);
+    console.log(`👥 Usuários: ${db.users.length}`);
+    console.log(`💬 Mensagens: ${db.messages.length}`);
     console.log('═══════════════════════════════════════════');
 });
